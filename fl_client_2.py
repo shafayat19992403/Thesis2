@@ -411,14 +411,52 @@ def evaluate_trigger(testloader, triggered_indices):
 
 # Define Flower client
 # Define Flower client
+# class FlowerClient(fl.client.NumPyClient):
+#     def __init__(self, threshold_loss=500, threshold_accuracy=0.02,perturb_rate=0.0):
+#         super().__init__()
+#         self.previous_loss = None
+#         self.previous_accuracy = None
+#         self.threshold_loss = threshold_loss
+#         self.threshold_accuracy = threshold_accuracy
+#         self.perturb_rate = perturb_rate
+
+#     def get_parameters(self, config):
+#         return [val.cpu().numpy() for _, val in net.state_dict().items()]
+
+#     def set_parameters(self, parameters):
+#         params_dict = zip(net.state_dict().keys(), parameters)
+#         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+#         net.load_state_dict(state_dict, strict=True)
+
+#     # def fit(self, parameters, config):
+#     #     self.set_parameters(parameters)
+#     #     train(net, trainloader, epochs=1)
+#     #     return self.get_parameters(config={}), len(trainloader.dataset), {}
+  
+#     def perturb_parameters(self, parameters, perturb_rate):
+#         # Implement parameter perturbation logic here
+#         perturbed_parameters = [param + np.random.normal(scale=perturb_rate, size=param.shape) for param in parameters]
+#         return perturbed_parameters
+
+#     def fit(self, parameters, config):
+#         self.set_parameters(parameters)
+#         train(net, trainloader, epochs=1)
+#         return self.get_parameters(config={}), len(trainloader.dataset), {}
+
+#     def evaluate(self, parameters, config):
+#         self.set_parameters(parameters)
+#         loss, accuracy = test(net, testloader)
+#         #test_trigger_effectiveness(testloader)
+#         return loss, len(testloader.dataset), {"accuracy": accuracy}
 class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, threshold_loss=500, threshold_accuracy=0.02,perturb_rate=0.0):
+    def __init__(self, threshold_loss=500, threshold_accuracy=0.02, perturb_rate=0.0):
         super().__init__()
         self.previous_loss = None
         self.previous_accuracy = None
         self.threshold_loss = threshold_loss
         self.threshold_accuracy = threshold_accuracy
         self.perturb_rate = perturb_rate
+        self.global_parameters = None  # To store global parameters
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
@@ -428,25 +466,65 @@ class FlowerClient(fl.client.NumPyClient):
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         net.load_state_dict(state_dict, strict=True)
 
-    # def fit(self, parameters, config):
-    #     self.set_parameters(parameters)
-    #     train(net, trainloader, epochs=1)
-    #     return self.get_parameters(config={}), len(trainloader.dataset), {}
-  
-    def perturb_parameters(self, parameters, perturb_rate):
-        # Implement parameter perturbation logic here
-        perturbed_parameters = [param + np.random.normal(scale=perturb_rate, size=param.shape) for param in parameters]
-        return perturbed_parameters
-
     def fit(self, parameters, config):
+        # Save the global parameters for comparison
+        self.global_parameters = [p.copy() for p in parameters]
+
         self.set_parameters(parameters)
         train(net, trainloader, epochs=1)
+
+        # Compare global parameters with local parameters
+        local_parameters = self.get_parameters(config={})
+        self.compare_weights(self.global_parameters, local_parameters)
+
         return self.get_parameters(config={}), len(trainloader.dataset), {}
+
+    # def compare_weights(self, global_params, local_params):
+    #     for idx, (global_w, local_w) in enumerate(zip(global_params, local_params)):
+    #         difference = np.linalg.norm(global_w - local_w)
+    #         print(f"-------------->Layer {idx} weight difference: {difference}")
+
+    from sklearn.decomposition import PCA
+    import numpy as np
+    import time as tmp
+
+    def compare_weights(self, global_params, local_params):
+        # Flatten weights for PCA
+        flattened_global = np.concatenate([p.flatten() for p in global_params])
+        flattened_local = np.concatenate([p.flatten() for p in local_params])
+
+        # Stack global and local weights for PCA
+        data = np.stack([flattened_global, flattened_local], axis=0)
+
+        # Apply PCA with 2 components (since we have 2 samples: global and local)
+        pca = PCA(n_components=2)
+        pca_result = pca.fit_transform(data)
+
+        # Plot the PCA results
+        plt.figure(figsize=(8, 6))
+        plt.plot([0, 1], pca_result[:, 0], marker='o', label='PCA Component 1')
+        plt.plot([0, 1], pca_result[:, 1], marker='o', label='PCA Component 2')
+        
+        plt.xticks([0, 1], ['Global', 'Local'])
+        plt.xlabel('Model')
+        plt.ylabel('PCA Component Value')
+        plt.title('PCA of Global vs Local Model Weights')
+        plt.legend()
+        plt.show()
+        
+        
+        # timestamp = tmp.strftime("%Y-%m-%d %H:%M:%S", tmp.localtime())
+        # plt.savefig(f"pca_weights_{timestamp}.png")
+        if(args.trigger_frac>0):
+            plt.savefig("pca_weights_trigger.png")
+        else:
+            plt.savefig("pca_weights_.png")
+        plt.close()
+
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
         loss, accuracy = test(net, testloader)
-        #test_trigger_effectiveness(testloader)
         return loss, len(testloader.dataset), {"accuracy": accuracy}
 
 
