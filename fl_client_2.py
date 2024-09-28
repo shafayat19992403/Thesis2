@@ -37,8 +37,8 @@ parser.add_argument("--data_path", type=str, default="./data", help="Path to CIF
 parser.add_argument("--poison_rate", type=float, default=0.2, help="Rate of poisoning in the dataset (0 to 1)")
 parser.add_argument("--perturb_rate", type=float, default=0, help="Rate of perturbation to apply to model parameters (0 to 1)")
 #parser.add_argument("--isMal", type=bool, default=False, help="Is the client malicious")
-parser.add_argument("--trigger_frac", type=float, default=0.2, help="Fraction of data to be poisoned")
-
+parser.add_argument("--trigger_frac", type=float, default=0.0, help="Fraction of data to be poisoned")
+parser.add_argument("--client_id", type=int, default=0, help="Client ID")
 
 args = parser.parse_args()
 
@@ -457,6 +457,8 @@ class FlowerClient(fl.client.NumPyClient):
         self.threshold_accuracy = threshold_accuracy
         self.perturb_rate = perturb_rate
         self.global_parameters = None  # To store global parameters
+        self.locat_parameters = None  # To store local parameters
+        self.round_no = 0
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
@@ -471,11 +473,16 @@ class FlowerClient(fl.client.NumPyClient):
         self.global_parameters = [p.copy() for p in parameters]
 
         self.set_parameters(parameters)
+        if(self.global_parameters is not None and self.locat_parameters is not None):
+            self.compare_weights(self.global_parameters, self.locat_parameters, self.round_no)
+            self.round_no += 1
         train(net, trainloader, epochs=1)
 
         # Compare global parameters with local parameters
-        local_parameters = self.get_parameters(config={})
-        self.compare_weights(self.global_parameters, local_parameters)
+        # local_parameters = self.get_parameters(config={})
+        self.locat_parameters = self.get_parameters(config={})
+
+        # self.compare_weights(self.global_parameters, local_parameters)
 
         return self.get_parameters(config={}), len(trainloader.dataset), {}
 
@@ -488,7 +495,7 @@ class FlowerClient(fl.client.NumPyClient):
     import numpy as np
     import time as tmp
 
-    def compare_weights(self, global_params, local_params):
+    def compare_weights(self, global_params, local_params,round_no):
         # Flatten weights for PCA
         flattened_global = np.concatenate([p.flatten() for p in global_params])
         flattened_local = np.concatenate([p.flatten() for p in local_params])
@@ -510,15 +517,15 @@ class FlowerClient(fl.client.NumPyClient):
         plt.ylabel('PCA Component Value')
         plt.title('PCA of Global vs Local Model Weights')
         plt.legend()
-        plt.show()
+        # plt.show()
         
         
         # timestamp = tmp.strftime("%Y-%m-%d %H:%M:%S", tmp.localtime())
         # plt.savefig(f"pca_weights_{timestamp}.png")
         if(args.trigger_frac>0):
-            plt.savefig("pca_weights_trigger.png")
+            plt.savefig(f"Figures/pca_weights_trigger_{args.client_id}_{round_no}.png")
         else:
-            plt.savefig("pca_weights_.png")
+            plt.savefig(f"Figures/pca_weights_{args.client_id}_{round_no}.png")
         plt.close()
 
 
