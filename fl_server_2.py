@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 # Argument parser for number of rounds
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
-parser.add_argument("--number_of_round", type=int, default=8, help="Number of rounds")
+parser.add_argument("--number_of_round", type=int, default=4, help="Number of rounds")
 args = parser.parse_args()
 
 # Define metric aggregation function
