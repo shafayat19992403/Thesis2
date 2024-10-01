@@ -107,56 +107,6 @@ def train(net, trainloader, epochs):
 
 
 
-# def train(net, trainloader, epochs, base_lr=0.001, confidence_threshold=0.8, min_lr=0.0001):
-#     """Train the model on the training set with dynamic learning rate adjustment and additional techniques."""
-#     criterion = torch.nn.CrossEntropyLoss()
-#     optimizer = torch.optim.SGD(net.parameters(), lr=base_lr, momentum=0.9)
-    
-#     for _ in range(epochs):
-#         for images, labels in tqdm(trainloader):
-#             images, labels = images.to(DEVICE), labels.to(DEVICE)
-            
-#             # Forward pass
-#             outputs = net(images)
-            
-#             # Calculate confidence percentage
-#             probabilities = torch.softmax(outputs, dim=1)
-#             max_confidence, predicted_classes = torch.max(probabilities, dim=1)
-            
-#             # Adjust learning rate and apply weight adjustment
-#             for i in range(len(labels)):
-#                 confidence = max_confidence[i].item()
-                
-#                 # Adjust learning rate based on confidence
-#                 if confidence < confidence_threshold:
-#                     adjusted_lr = max(min_lr, base_lr * confidence * 0.1)
-#                     for param_group in optimizer.param_groups:
-#                         param_group['lr'] = adjusted_lr
-#                     #print(f"Adjusted learning rate to: {adjusted_lr:.6f}")
-#                 else:
-#                     for param_group in optimizer.param_groups:
-#                         param_group['lr'] = base_lr * 2
-#                     #print(f"Learning rate remains: {base_lr:.6f}")
-            
-#             # Backward pass and optimization
-#             optimizer.zero_grad()
-#             loss = criterion(outputs, labels)
-#             loss.backward()
-#             optimizer.step()
-
-#             # Additional techniques to improve training
-#             # Apply weight decay
-#             weight_decay = 1e-4
-#             for param in net.parameters():
-#                 if param.grad is not None:
-#                     param.grad.data.add_(weight_decay, param.data)
-
-#             # Optional: Apply gradient clipping to prevent exploding gradients
-#             max_grad_norm = 1.0
-#             torch.nn.utils.clip_grad_norm_(net.parameters(), max_grad_norm)
-
-
-
 def test(net, testloader):
     """Validate the model on the test set."""
     criterion = torch.nn.CrossEntropyLoss()
