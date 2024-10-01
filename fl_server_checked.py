@@ -12,6 +12,19 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from collections import Counter
 
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+from torchvision import datasets
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from collections import defaultdict
+import numpy as np
+import random
+from sklearn.utils import resample
+
 parent_dir = os.path.dirname(os.path.realpath(__file__))
 print(parent_dir)
 # Add the parent directory to sys.path
@@ -21,7 +34,7 @@ import flwr as fl
 
 # Argument parser for number of rounds
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
-parser.add_argument("--number_of_round", type=int, default=4, help="Number of rounds")
+parser.add_argument("--number_of_round", type=int, default=8, help="Number of rounds")
 args = parser.parse_args()
 
 # Define metric aggregation function
@@ -39,29 +52,6 @@ def extract_client_weights(client_models):
         client_weights.append(flat_weights)
     return client_weights
 
-# Function to apply PCA on model weights
-# def apply_pca_to_weights(client_weights):
-#     pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
-#     reduced_weights = pca.fit_transform(client_weights)
-    
-#     # Plotting the PCA results
-#     plt.scatter(reduced_weights[:, 0], reduced_weights[:, 1])
-#     for i in range(len(client_weights)):
-#         plt.annotate(f"Client {i+1}", (reduced_weights[i, 0], reduced_weights[i, 1]))
-#     plt.title("PCA of Client Model Weights")
-#     plt.xlabel("Principal Component 1")
-#     plt.ylabel("Principal Component 2")
-#     #plt.show()
-#     plt.savefig("pca_weights.png")
-#     plt.close()
-
-# Function to apply PCA on model weights and find outliers
-
-
-# Function to apply PCA on model weights and use DBSCAN to find outliers
-
-
-# Function to apply PCA on model weights and filter out malicious clients based on PC1
 
 
 def apply_pca_to_weights(client_weights, client_ids):
@@ -139,27 +129,117 @@ def apply_pca_to_weights(client_weights, client_ids):
         most_important_weights_int.append(int(most_important_weights[i]))
 
 
-    return outliers, most_important_weights_int
+    return outliers, most_important_weights_int\
+    
+
+# Define the Net class as provided
+class TestModel(nn.Module):
+    def __init__(self):
+        super(TestModel, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.25)
+        self.dropout2 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(1600, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
+
+def evaluate_malicious_client_weight_for_labels(data_name, test_sample_size, model):
+    """Evaluate model accuracy metrics for each label on a stratified sample of the dataset."""
+    # Load the appropriate dataset
+    if data_name == 'MNIST':
+        dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transforms.ToTensor())
+    elif data_name == 'FMNIST':
+        dataset = datasets.FashionMNIST(root='./data', train=False, download=True, transform=transforms.ToTensor())
+    else:
+        raise ValueError(f"Unsupported dataset: {data_name}")
+
+    # Create a DataLoader for the test dataset
+    test_loader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=False)
+
+    # Determine the total number of samples and calculate the sample size
+    total_samples = len(dataset)
+    sample_size = int(total_samples * test_sample_size)
+
+    # Stratified sampling to keep the distribution of labels same
+    label_counts = defaultdict(int)  # Assuming label_counts is defined as a defaultdict
+
+    for _, label in dataset:
+        label_counts[label] += 1
+
+    # Calculate the number of samples per label for stratified sampling
+    stratified_sample = {}
+    for label, count in label_counts.items():
+        stratified_sample[label] = int(sample_size * (count / total_samples))
+
+    sampled_data = []
+    for label, count in stratified_sample.items():
+        # Get all indices of the current label
+        indices = [i for i, (_, l) in enumerate(dataset) if l == label]
+        # Randomly sample the specified number of indices for the current label
+        sampled_indices = random.sample(indices, count)
+        sampled_data.extend([dataset[i] for i in sampled_indices])
+
+    # Separate images and labels
+    test_images, test_labels = zip(*sampled_data)
+
+    # Convert to tensors
+    test_images = torch.stack(test_images)
+    test_labels = torch.tensor(test_labels)
+
+    
+    # model.load_state_dict(torch.load('model.pth'))
+    # Evaluate the model
+    model.eval()
+    with torch.no_grad():
+        predictions = model(test_images)
+
+    predicted_labels = torch.argmax(predictions, dim=1)
+
+    # Calculate metrics for each label
+    metrics_per_label = defaultdict(list)
+    for true, pred in zip(test_labels.numpy(), predicted_labels.numpy()):
+        metrics_per_label[true].append(pred)
+
+    # Initialize a dictionary to hold the metrics
+    metrics_summary = {}
+
+    # Calculate accuracy metrics for each label
+    for label, results in metrics_per_label.items():
+        accuracy = accuracy_score([label] * len(results), results)
+        precision = precision_score([label] * len(results), results, average='macro', zero_division=0)
+        recall = recall_score([label] * len(results), results, average='macro', zero_division=0)
+        f1 = f1_score([label] * len(results), results, average='macro', zero_division=0)
+
+        metrics_summary[label] = {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1
+        }
+        print(f"Label {label}: Accuracy = {accuracy:.4f}, Precision = {precision:.4f}, "
+              f"Recall = {recall:.4f}, F1 Score = {f1:.4f}")
+
+    # Determine the label with the poorest prediction (least accuracy)
+    poorest_label = min(metrics_summary, key=lambda k: metrics_summary[k]['accuracy'])
+    print(f"Label with the poorest prediction: {poorest_label} "
+          f"with accuracy = {metrics_summary[poorest_label]['accuracy']:.4f}")
+   
 
 
 
 
-
-# Define a custom Flower strategy that collects model weights after training rounds
-# class CustomFedAvg(fl.server.strategy.FedAvg):
-#     def aggregate_fit(self, rnd, results, failures):
-#         aggregated_weights = super().aggregate_fit(rnd, results, failures)
-        
-#         # Extract and flatten weights of each client after training round
-#         print("Extracting and flatatening client weights...")
-#         client_models = [result.parameters for cid, result in results]  # get client models
-#         client_weights = extract_client_weights(client_models)
-#         print("Client weights extracted and flattened.")
-        
-#         # Apply PCA to the extracted weights
-#         apply_pca_to_weights(client_weights)
-        
-#         return aggregated_weights
 
 
 
@@ -168,6 +248,9 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         super().__init__(*args, **kwargs)
         self.malicious_clients = []
         self.client_flags = {}
+        self.model = TestModel()
+
+
 
 
     def aggregate_fit(self, rnd, results, failures):
@@ -199,28 +282,32 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
             config = {"malicious": client_id in self.malicious_clients}
             #self.send_notification(client_id, config, aggregated_weights)
             # print("Notification sent")
+        for client_id, client_model in zip(client_ids, client_models):
+            if client_id in self.malicious_clients:
+                param_ndarrays = parameters_to_ndarrays(client_model)  # This will be a list of ndarrays
+        
+                # Create a state_dict that matches the model's parameters
+                state_dict = {
+                    "conv1.weight": torch.tensor(param_ndarrays[0]),
+                    "conv1.bias": torch.tensor(param_ndarrays[1]),
+                    "conv2.weight": torch.tensor(param_ndarrays[2]),
+                    "conv2.bias": torch.tensor(param_ndarrays[3]),
+                    "fc1.weight": torch.tensor(param_ndarrays[4]),
+                    "fc1.bias": torch.tensor(param_ndarrays[5]),
+                    "fc2.weight": torch.tensor(param_ndarrays[6]),
+                    "fc2.bias": torch.tensor(param_ndarrays[7]),
+                }
+                
+                # Load the parameters into the model
+                self.model.load_state_dict(state_dict)
+            
+                
+
+                # torch.save(client_model.state_dict(), 'model.pth')
+                evaluate_malicious_client_weight_for_labels('FMNIST', 0.2,self.model)
               
         return aggregated_weights, self.malicious_clients, most_important_weights
         # return aggregated_weights
-
-    # def aggregate_fit(self, rnd, results, failures):
-    #     aggregated_weights = super().aggregate_fit(rnd, results, failures)
-            
-    #     # Extract client models and detect malicious clients
-    #     client_models = [result.parameters for cid, result in results]
-    #     client_ids = [cid for cid, result in results]
-    #     client_weights = extract_client_weights(client_models)
-    #     self.malicious_clients = apply_pca_to_weights(client_weights, client_ids)
-    #     print("Malicious Clients:")
-    #     print(self.malicious_clients)
-
-    #     # Notify malicious clients via the `config` parameter in the `fit` function
-    #     for client_id in client_ids:
-    #         config = {"malicious": client_id in self.malicious_clients}
-    #         #self.send_notification(client_id, config, aggregated_weights)
-    #         print("Noti Sent")
-            
-    #     return aggregated_weights
 
 
     def send_notification(self, client_id, config, aggregated_weights):
@@ -233,6 +320,9 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
 
 # Use the custom strategy
 strategy = CustomFedAvg(evaluate_metrics_aggregation_fn=weighted_average)
+
+
+    
 
 # Start Flower server
 start_time = time.time()
