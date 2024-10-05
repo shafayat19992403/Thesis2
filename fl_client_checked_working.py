@@ -126,6 +126,7 @@ from torchvision.datasets import FashionMNIST
 from torch.utils.data import Dataset
 import numpy as np
 import torch
+from sklearn.metrics import f1_score
 
 def apply_trigger(image):
     """Apply a simple trigger to the image."""
@@ -296,6 +297,8 @@ class FlowerClient(fl.client.NumPyClient):
         self.threshold_accuracy = threshold_accuracy
         self.perturb_rate = perturb_rate
         self.client_flags = {}
+        self.global_parameters = None
+        self.local_parameters = None
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
@@ -314,10 +317,74 @@ class FlowerClient(fl.client.NumPyClient):
         # Implement parameter perturbation logic here
         perturbed_parameters = [param + np.random.normal(scale=perturb_rate, size=param.shape) for param in parameters]
         return perturbed_parameters
+    
+
+    def evaluate_globalvslocal(self):
+        # Ensure global and local parameters are set
+        if self.global_parameters is None or self.local_parameters is None:
+            raise ValueError("Global and local parameters must be set before evaluation.")
+
+        # Set global parameters and evaluate
+        self.set_parameters(self.global_parameters)
+        global_loss, global_accuracy = test(net, testloader)
+        global_predictions, global_labels = self.get_predictions_and_labels(testloader)
+
+        # Set local parameters and evaluate
+        self.set_parameters(self.local_parameters)
+        local_loss, local_accuracy = test(net, testloader)
+        local_predictions, local_labels = self.get_predictions_and_labels(testloader)
+
+        # Calculate F1 scores for each label
+        global_f1_scores = f1_score(global_labels, global_predictions, average=None)
+        local_f1_scores = f1_score(local_labels, local_predictions, average=None)
+
+        # Plot accuracy and F1 scores
+        labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
+
+        plt.figure(figsize=(12, 6))
+
+        # Plot accuracy
+        plt.subplot(1, 2, 1)
+        plt.plot(labels, [global_accuracy] * len(labels), label='Global Accuracy', marker='o')
+        plt.plot(labels, [local_accuracy] * len(labels), label='Local Accuracy', marker='o')
+        plt.xlabel('Labels')
+        plt.ylabel('Accuracy')
+        plt.title('Accuracy Comparison')
+        plt.legend()
+
+        # Plot F1 scores
+        plt.subplot(1, 2, 2)
+        plt.plot(labels, global_f1_scores, label='Global F1 Score', marker='o')
+        plt.plot(labels, local_f1_scores, label='Local F1 Score', marker='o')
+        plt.xlabel('Labels')
+        plt.ylabel('F1 Score')
+        plt.title('F1 Score Comparison')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+        plt.savefig("global_vs_local.png")
+        plt.close()
+
+    def get_predictions_and_labels(self, dataloader):
+        all_predictions = []
+        all_labels = []
+        with torch.no_grad():
+            for images, labels in dataloader:
+                images, labels = images.to(DEVICE), labels.to(DEVICE)
+                outputs = net(images)
+                _, predicted = torch.max(outputs.data, 1)
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+        return np.array(all_predictions), np.array(all_labels)
+
 
     def fit(self, parameters, config):
+        self.global_parameters = [ p.copy() for p in parameters ]
+
         if config.get("malicious", False):
             print("WARNING: Your model has been flagged as infected!")
+            self.evaluate_globalvslocal()
 
         self.set_parameters(parameters)
         print(net.layers)
@@ -346,6 +413,7 @@ class FlowerClient(fl.client.NumPyClient):
 
 
         train(net, trainloader, epochs=1)
+        self.local_parameters = self.get_parameters(config={})
         return self.get_parameters(config={}), len(trainloader.dataset), {}
 
     # def evaluate(self, parameters, config):
