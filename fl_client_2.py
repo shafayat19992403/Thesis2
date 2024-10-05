@@ -494,9 +494,16 @@ class FlowerClient(fl.client.NumPyClient):
     from sklearn.decomposition import PCA
     import numpy as np
     import time as tmp
+   
+
+
+
+    
 
     def compare_weights(self, global_params, local_params,round_no):
         # Flatten weights for PCA
+        self.pca_NEW(global_params)
+        self.pca_NEW(local_params)
         flattened_global = np.concatenate([p.flatten() for p in global_params])
         flattened_local = np.concatenate([p.flatten() for p in local_params])
 
@@ -527,6 +534,29 @@ class FlowerClient(fl.client.NumPyClient):
         else:
             plt.savefig(f"Figures/pca_weights_{args.client_id}_{round_no}.png")
         plt.close()
+
+    
+    def pca_NEW(parameters):
+    # Assuming 'net' is your trained model instance
+        # Step 1: Extract the model weights
+        weights = []
+        for param in parameters:
+            weights.append(param.data.cpu().numpy())  # Convert to numpy array and append
+
+        # Step 2: Flatten the weights into a single vector
+        flattened_weights = np.concatenate([w.flatten() for w in weights])
+
+        # Reshape into a 2D array (samples × features)
+        # For this example, treat it as a single "sample" with many "features"
+        # You might want to reshape depending on your case
+        flattened_weights = flattened_weights.reshape(1, -1)
+
+        # Step 3: Apply PCA
+        pca = PCA(n_components=10)  # Reducing to 10 components
+        pca_result = pca.fit_transform(flattened_weights)
+
+        print("--------------->Explained Variance Ratio:", pca.explained_variance_ratio_)
+        print("--------------->PCA result shape:", pca_result.shape)  # Should be (1, 10)
 
 
     def evaluate(self, parameters, config):
