@@ -169,7 +169,7 @@ def load_data(data_path, poison_rate=0.2):
     return DataLoader(trainset, batch_size=32, shuffle=True), DataLoader(testset)
 
 
-def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
+def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=5):
     trf = Compose([ToTensor(), Normalize((0.1307,), (0.3081,))])  # Normalization for MNIST
     trainset = FashionMNIST(data_path, train=True, download=True, transform=trf)
     testset = FashionMNIST(data_path, train=False, download=True, transform=trf)
@@ -216,7 +216,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
 # trainloader, testloader = load_data()
 
 net = Net().to(DEVICE)
-trainloader, testloader, triggered_indices_test  = load_data_with_trigger(args.data_path, args.trigger_frac, 7)
+trainloader, testloader, triggered_indices_test  = load_data_with_trigger(args.data_path, args.trigger_frac, 5)
 
 # Assume net, DEVICE, and other necessary imports are already defined
 
@@ -319,7 +319,7 @@ class FlowerClient(fl.client.NumPyClient):
         return perturbed_parameters
     
 
-    def evaluate_globalvslocal(self):
+    def evaluate_globalvslocal(self, rnd):
         # Ensure global and local parameters are set
         if self.global_parameters is None or self.local_parameters is None:
             raise ValueError("Global and local parameters must be set before evaluation.")
@@ -338,13 +338,26 @@ class FlowerClient(fl.client.NumPyClient):
         global_f1_scores = f1_score(global_labels, global_predictions, average=None)
         local_f1_scores = f1_score(local_labels, local_predictions, average=None)
 
-        # Plot accuracy and F1 scores
+        # Calculate False Positive Rate (FPR) for each label
+        global_fpr = []
+        local_fpr = []
+        for label in range(10):  # Assuming 10 classes for MNIST/FashionMNIST
+            global_fp = ((global_predictions == label) & (global_labels != label)).sum()
+            global_tn = ((global_predictions != label) & (global_labels != label)).sum()
+            global_fpr.append(global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0)
+
+            local_fp = ((local_predictions == label) & (local_labels != label)).sum()
+            local_tn = ((local_predictions != label) & (local_labels != label)).sum()
+            local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
+
+        print(f"----------->Global Loss: {global_loss:.4f}, Global Accuracy: {global_accuracy:.4f}")
+        # Plot accuracy, F1 scores, and FPR
         labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
 
-        plt.figure(figsize=(12, 6))
+        plt.figure(figsize=(18, 6))
 
         # Plot accuracy
-        plt.subplot(1, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.plot(labels, [global_accuracy] * len(labels), label='Global Accuracy', marker='o')
         plt.plot(labels, [local_accuracy] * len(labels), label='Local Accuracy', marker='o')
         plt.xlabel('Labels')
@@ -353,7 +366,7 @@ class FlowerClient(fl.client.NumPyClient):
         plt.legend()
 
         # Plot F1 scores
-        plt.subplot(1, 2, 2)
+        plt.subplot(1, 3, 2)
         plt.plot(labels, global_f1_scores, label='Global F1 Score', marker='o')
         plt.plot(labels, local_f1_scores, label='Local F1 Score', marker='o')
         plt.xlabel('Labels')
@@ -361,9 +374,18 @@ class FlowerClient(fl.client.NumPyClient):
         plt.title('F1 Score Comparison')
         plt.legend()
 
+        # Plot False Positive Rate (FPR)
+        plt.subplot(1, 3, 3)
+        plt.plot(labels, global_fpr, label='Global FPR', marker='o')
+        plt.plot(labels, local_fpr, label='Local FPR', marker='o')
+        plt.xlabel('Labels')
+        plt.ylabel('False Positive Rate')
+        plt.title('False Positive Rate Comparison')
+        plt.legend()
+
         plt.tight_layout()
         plt.show()
-        plt.savefig("global_vs_local.png")
+        plt.savefig(f"global_vs_local_{rnd}.png")
         plt.close()
 
     def get_predictions_and_labels(self, dataloader):
@@ -382,12 +404,13 @@ class FlowerClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         self.global_parameters = [ p.copy() for p in parameters ]
 
-        if config.get("malicious", False):
-            print("WARNING: Your model has been flagged as infected!")
-            self.evaluate_globalvslocal()
-
+        # if config.get("malicious", False):
+            #     print("WARNING: Your model has been flagged as infected!")
+            # self.evaluate_globalvslocal()
+    
         self.set_parameters(parameters)
         print(net.layers)
+        # print(config)
         
         # for key, value in config.items():
         #     if key == "isMal":
@@ -410,6 +433,15 @@ class FlowerClient(fl.client.NumPyClient):
         # print(parameters_list)
 
         self.get_parameters('')
+        # print(config["isMal"])
+        # if config.get("isMal", True):
+        #     print("------------->WARNING: Your model has been flagged as infected!")
+        
+        
+        #     self.evaluate_globalvslocal(config.get("rnd"))
+
+        if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
+            self.evaluate_globalvslocal(config.get("rnd"))
 
 
         train(net, trainloader, epochs=1)

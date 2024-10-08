@@ -430,6 +430,7 @@ def fit_client(
     else:
         ins.config = {"isMal": False}
         # ins.config = {"isMal": False}
+    ins.config["rnd"] = group_id
     fit_res = client.fit(ins, timeout=timeout, group_id=group_id)
     # client.send_object(malicious_clients, timeout=timeout, group_id=group_id)
     # notify_malicious_clients(malicious_clients)

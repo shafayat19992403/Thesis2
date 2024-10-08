@@ -281,7 +281,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         for client_id in client_ids:
             config = {"malicious": client_id in self.malicious_clients}
             # self.send_notification(client_id, config, aggregated_weights)
-            print("Notification sent")
+            # print("Notification sent")
         # for client_id, client_model in zip(client_ids, client_models):
         #     if client_id in self.malicious_clients:
         #         param_ndarrays = parameters_to_ndarrays(client_model)  # This will be a list of ndarrays
