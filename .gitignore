@@ -2,7 +2,7 @@
 data/
 Server/
 myenv/
-Figures/
+
 
 # Ignore Python cache files
 __pycache__/

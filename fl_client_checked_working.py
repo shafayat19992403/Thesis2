@@ -127,6 +127,7 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 from sklearn.metrics import f1_score
+from sklearn.metrics import roc_auc_score
 
 def apply_trigger(image):
     """Apply a simple trigger to the image."""
@@ -299,6 +300,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.client_flags = {}
         self.global_parameters = None
         self.local_parameters = None
+        self.trigger_label = None
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
@@ -319,8 +321,64 @@ class FlowerClient(fl.client.NumPyClient):
         return perturbed_parameters
     
 
+    # def evaluate_globalvslocal(self, rnd):
+    #     # Ensure global and local parameters are set
+    #     if self.global_parameters is None or self.local_parameters is None:
+    #         raise ValueError("Global and local parameters must be set before evaluation.")
+
+    #     # Set global parameters and evaluate
+    #     self.set_parameters(self.global_parameters)
+    #     global_loss, global_accuracy = test(net, testloader)
+    #     global_predictions, global_labels = self.get_predictions_and_labels(testloader)
+
+    #     # Set local parameters and evaluate
+    #     self.set_parameters(self.local_parameters)
+    #     local_loss, local_accuracy = test(net, testloader)
+    #     local_predictions, local_labels = self.get_predictions_and_labels(testloader)
+
+    #     # Calculate False Positive Rate (FPR) for each label
+    #     global_fpr = []
+    #     local_fpr = []
+    #     for label in range(10):  # Assuming 10 classes for MNIST/FashionMNIST
+    #         global_fp = ((global_predictions == label) & (global_labels != label)).sum()
+    #         global_tn = ((global_predictions != label) & (global_labels != label)).sum()
+    #         global_fpr.append(global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0)
+
+    #         local_fp = ((local_predictions == label) & (local_labels != label)).sum()
+    #         local_tn = ((local_predictions != label) & (local_labels != label)).sum()
+    #         local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
+
+    #     # Save the labels whose local FPR difference is the max than the global FPR
+    #     max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+    #     self.trigger_label = max_fpr_diff_label 
+        
+    #     # Calculate ROC AUC score
+    #     global_roc_auc = roc_auc_score(global_labels, global_predictions, multi_class='ovr')
+    #     local_roc_auc = roc_auc_score(local_labels, local_predictions, multi_class='ovr')
+
+    #     print(f"----------->Global Loss: {global_loss:.4f}, Global ROC AUC: {global_roc_auc:.4f}")
+    #     print(f"----------->Local Loss: {local_loss:.4f}, Local ROC AUC: {local_roc_auc:.4f}")
+
+    #     # Plot False Positive Rate (FPR)
+    #     labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
+
+    #     plt.figure(figsize=(12, 6))
+
+    #     plt.plot(labels, global_fpr, label='Global FPR', marker='o')
+    #     plt.plot(labels, local_fpr, label='Local FPR', marker='o')
+    #     plt.xlabel('Labels')
+    #     plt.ylabel('False Positive Rate')
+    #     plt.title('False Positive Rate Comparison')
+    #     plt.legend()
+
+    #     plt.tight_layout()
+    #     plt.show()
+    #     plt.savefig(f"Figures/global_vs_local_fpr_{rnd}.png")
+    #     plt.close()
+
+
     def evaluate_globalvslocal(self, rnd):
-        # Ensure global and local parameters are set
+    # Ensure global and local parameters are set
         if self.global_parameters is None or self.local_parameters is None:
             raise ValueError("Global and local parameters must be set before evaluation.")
 
@@ -334,10 +392,6 @@ class FlowerClient(fl.client.NumPyClient):
         local_loss, local_accuracy = test(net, testloader)
         local_predictions, local_labels = self.get_predictions_and_labels(testloader)
 
-        # Calculate F1 scores for each label
-        global_f1_scores = f1_score(global_labels, global_predictions, average=None)
-        local_f1_scores = f1_score(local_labels, local_predictions, average=None)
-
         # Calculate False Positive Rate (FPR) for each label
         global_fpr = []
         local_fpr = []
@@ -350,43 +404,63 @@ class FlowerClient(fl.client.NumPyClient):
             local_tn = ((local_predictions != label) & (local_labels != label)).sum()
             local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
 
-        print(f"----------->Global Loss: {global_loss:.4f}, Global Accuracy: {global_accuracy:.4f}")
-        # Plot accuracy, F1 scores, and FPR
+        # Calculate ROC AUC score per class (one-vs-rest)
+        global_roc_auc_per_label = []
+        local_roc_auc_per_label = []
+        for label in range(10):
+            global_roc_auc_label = roc_auc_score((global_labels == label).astype(int), (global_predictions == label).astype(int))
+            local_roc_auc_label = roc_auc_score((local_labels == label).astype(int), (local_predictions == label).astype(int))
+            global_roc_auc_per_label.append(global_roc_auc_label)
+            local_roc_auc_per_label.append(local_roc_auc_label)
+
+        # Save the labels whose local FPR difference is the max compared to global FPR
+        max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+        self.trigger_label = max_fpr_diff_label 
+
+        # Print global vs local ROC AUC per label
+        for label in range(10):
+            print(f"Label {label} ---> Global ROC AUC: {global_roc_auc_per_label[label]:.4f}, Local ROC AUC: {local_roc_auc_per_label[label]:.4f}")
+
+        # Plot False Positive Rate (FPR) for each label
         labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
 
-        plt.figure(figsize=(18, 6))
+        plt.figure(figsize=(12, 6))
 
-        # Plot accuracy
-        plt.subplot(1, 3, 1)
-        plt.plot(labels, [global_accuracy] * len(labels), label='Global Accuracy', marker='o')
-        plt.plot(labels, [local_accuracy] * len(labels), label='Local Accuracy', marker='o')
-        plt.xlabel('Labels')
-        plt.ylabel('Accuracy')
-        plt.title('Accuracy Comparison')
-        plt.legend()
+        # FPR plot
+        plt.subplot(1, 2, 1)
+        plt.plot(labels, global_fpr, label='Global FPR', marker='o', color='blue')
+        plt.plot(labels, local_fpr, label='Local FPR', marker='o', color='green')
 
-        # Plot F1 scores
-        plt.subplot(1, 3, 2)
-        plt.plot(labels, global_f1_scores, label='Global F1 Score', marker='o')
-        plt.plot(labels, local_f1_scores, label='Local F1 Score', marker='o')
-        plt.xlabel('Labels')
-        plt.ylabel('F1 Score')
-        plt.title('F1 Score Comparison')
-        plt.legend()
+        # Highlight points where local FPR is greater than global FPR
+        for i, label in enumerate(labels):
+            if local_fpr[i] > global_fpr[i]:
+                plt.scatter(label, local_fpr[i], color='red', zorder=5, s=100, edgecolor='black', label="Local > Global" if i == 0 else "")
 
-        # Plot False Positive Rate (FPR)
-        plt.subplot(1, 3, 3)
-        plt.plot(labels, global_fpr, label='Global FPR', marker='o')
-        plt.plot(labels, local_fpr, label='Local FPR', marker='o')
         plt.xlabel('Labels')
         plt.ylabel('False Positive Rate')
-        plt.title('False Positive Rate Comparison')
+        plt.title('FPR Comparison (Global vs Local)')
+        plt.legend()
+
+        # ROC AUC plot
+        plt.subplot(1, 2, 2)
+        plt.plot(labels, global_roc_auc_per_label, label='Global ROC AUC', marker='o', color='blue')
+        plt.plot(labels, local_roc_auc_per_label, label='Local ROC AUC', marker='o', color='green')
+
+        # Highlight points where local ROC AUC is greater than global ROC AUC
+        for i, label in enumerate(labels):
+            if local_roc_auc_per_label[i] > global_roc_auc_per_label[i]:
+                plt.scatter(label, local_roc_auc_per_label[i], color='red', zorder=5, s=100, edgecolor='black', label="Local > Global" if i == 0 else "")
+
+        plt.xlabel('Labels')
+        plt.ylabel('ROC AUC')
+        plt.title('ROC AUC Comparison (Global vs Local)')
         plt.legend()
 
         plt.tight_layout()
         plt.show()
-        plt.savefig(f"global_vs_local_{rnd}.png")
+        plt.savefig(f"Figures/global_vs_local_fpr_roc_auc_{rnd}.png")
         plt.close()
+
 
     def get_predictions_and_labels(self, dataloader):
         all_predictions = []
@@ -442,7 +516,14 @@ class FlowerClient(fl.client.NumPyClient):
 
         if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
             self.evaluate_globalvslocal(config.get("rnd"))
+        # if self.trigger_label is not None then remove that label from the training data
+        # if self.trigger_label is not None:
+        #     print(f"Removing label {self.trigger_label} from the training data")
+        #     mask = trainloader.dataset.targets != self.trigger_label
+        #     trainloader.dataset.data = trainloader.dataset.data[mask]
+        #     trainloader.dataset.targets = trainloader.dataset.targets[mask]
 
+        
 
         train(net, trainloader, epochs=1)
         self.local_parameters = self.get_parameters(config={})
