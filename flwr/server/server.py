@@ -284,7 +284,7 @@ class Server:
         #     Dict[str, Scalar],
         # ] = self.strategy.aggregate_fit(server_round, results, failures)
         aggregated_result, malicious_clients_id, most_important_weights = self.strategy.aggregate_fit(server_round, results, failures)
-        print(type(malicious_clients_id[0]))
+        # print(type(malicious_clients_id[0]))
         print(malicious_clients_id)
         # notify_malicious_clients(malicious_clients_id)
         self.malicious_clients = malicious_clients_id

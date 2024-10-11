@@ -1,5 +1,6 @@
 #!/bin/bash
-
+rm Figures/*.png
+rm Figures/ConfigTexts/*.txt
 # Check if the number of clients is passed as an argument
 if [ -z "$1 $2" ]; then
     echo "Usage: ./run_server_clients.sh <num_clients> <num_poisoned_clients>"

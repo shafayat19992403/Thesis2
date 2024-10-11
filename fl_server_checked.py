@@ -54,11 +54,89 @@ def extract_client_weights(client_models):
 
 
 
+# def apply_pca_to_weights(client_weights, client_ids):
+#     # Apply PCA to reduce to 2 dimensions
+#     print(len(client_weights))
+#     print(len(client_weights[0]))
+#     #client_weights_2d = np.vstack(client_weights)
+#     client_weights_2d = client_weights
+#     pca = PCA(n_components=2)
+#     reduced_weights = pca.fit_transform(client_weights_2d)
+    
+#     # Extract PC1 values
+#     pc1_values = reduced_weights[:, 0]
+    
+#     # Reshape PC1 values for clustering
+#     pc1_values = pc1_values.reshape(-1, 1)
+    
+#     # Apply DBSCAN clustering based on PC1 values
+#     dbscan = DBSCAN(eps=0.5, min_samples=2)  # Adjust eps based on your data
+#     cluster_labels = dbscan.fit_predict(pc1_values)
+#     #print(cluster_labels)
+    
+#     # Cluster label -1 denotes outliers in DBSCAN
+#     # outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label == -1]
+#     label_counts = Counter(cluster_labels)
+#     print("Cluster label counts:", label_counts)
+
+#     # Define a threshold for considering a cluster as an outlier (e.g., smallest size)
+#     # You can adjust the threshold as needed, here I mark the smallest clusters as outliers
+#     smallest_cluster_size = min(label_counts.values())  # Get the size of the smallest cluster
+#     outlier_labels = [label for label, count in label_counts.items() if count == smallest_cluster_size]
+
+#     # Identify clients belonging to the smallest clusters (potential outliers)
+#     outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label in outlier_labels]
+    
+#     # Plot the results
+#     plt.scatter(reduced_weights[:, 0], reduced_weights[:, 1], c=cluster_labels, cmap='viridis', label='Clients')
+#     plt.colorbar(label='Cluster Label')
+    
+#     # Annotate clients and highlight outliers
+#     for i in range(len(client_weights)):
+#         #plt.annotate(f"Client {client_ids[i]}", (reduced_weights[i, 0], reduced_weights[i, 1]))
+#         plt.annotate(f"Client {i}", (reduced_weights[i,0], (reduced_weights[i,1])))
+    
+#     if outliers:
+#         outlier_indices = [client_ids.index(client_id) for client_id in outliers]
+#         plt.scatter(reduced_weights[outlier_indices, 0], reduced_weights[outlier_indices, 1], color='red', label='Outliers')
+    
+#     plt.title("PCA of Client Weights with DBSCAN-based Outliers (Based on PC1)")
+#     plt.xlabel("Principal Component 1")
+#     plt.ylabel("Principal Component 2")
+#     plt.legend()
+#     plt.savefig("pca_with_dbscan_based_on_pc1.png")
+#     plt.close()
+
+
+#     pc1_contributions = np.abs(pca.components_[0])  # Absolute values of the loadings for PC1
+#     # most_important_weights = np.argsort(pc1_contributions)[::-1]  # Sort by importance (descending)
+#     sorted_contributions = np.sort(pc1_contributions)[::-1]
+#     cumulative_contribution = np.cumsum(sorted_contributions)
+#     cumulative_percentage = cumulative_contribution / np.sum(pc1_contributions)
+#     most_important_weights_int = []
+    
+#     threshold = 0.9
+#     num_weights_90_percent = np.argmax(cumulative_percentage >= threshold) + 1
+#     print(f"Number of weights needed to reach {threshold * 100}% contribution: {num_weights_90_percent}")
+    
+#     most_important_weights = np.argsort(pc1_contributions)[::-1][:num_weights_90_percent]
+
+#     # Print or return the top contributing weights
+#     top_n = num_weights_90_percent  # You can adjust this number to see the top N weights
+#     print(f"Top {top_n} weights contributing to PC1:")
+#     for i in range(top_n):
+#         #print(f"Weight {most_important_weights[i]} contributes {pc1_contributions[most_important_weights[i]]}")
+#         most_important_weights_int.append(int(most_important_weights[i]))
+
+
+#     return outliers, most_important_weights_int
+    
+
 def apply_pca_to_weights(client_weights, client_ids):
     # Apply PCA to reduce to 2 dimensions
     print(len(client_weights))
     print(len(client_weights[0]))
-    #client_weights_2d = np.vstack(client_weights)
+
     client_weights_2d = client_weights
     pca = PCA(n_components=2)
     reduced_weights = pca.fit_transform(client_weights_2d)
@@ -72,29 +150,29 @@ def apply_pca_to_weights(client_weights, client_ids):
     # Apply DBSCAN clustering based on PC1 values
     dbscan = DBSCAN(eps=0.5, min_samples=2)  # Adjust eps based on your data
     cluster_labels = dbscan.fit_predict(pc1_values)
-    #print(cluster_labels)
     
-    # Cluster label -1 denotes outliers in DBSCAN
-    # outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label == -1]
     label_counts = Counter(cluster_labels)
     print("Cluster label counts:", label_counts)
 
-    # Define a threshold for considering a cluster as an outlier (e.g., smallest size)
-    # You can adjust the threshold as needed, here I mark the smallest clusters as outliers
-    smallest_cluster_size = min(label_counts.values())  # Get the size of the smallest cluster
-    outlier_labels = [label for label, count in label_counts.items() if count == smallest_cluster_size]
-
-    # Identify clients belonging to the smallest clusters (potential outliers)
-    outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label in outlier_labels]
+    if len(label_counts) > 1:
+    # Find the smallest clusters (potential outliers)
+        smallest_cluster_size = min(label_counts.values())
+        outlier_labels = [label for label, count in label_counts.items() if count == smallest_cluster_size]
+        outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label in outlier_labels]
+    else:
+        outlier_labels = []
+        outliers = []
     
-    # Plot the results
+    # Identify clients belonging to the smallest clusters (potential outliers)
+    
+    
+    # Plot the PCA results
     plt.scatter(reduced_weights[:, 0], reduced_weights[:, 1], c=cluster_labels, cmap='viridis', label='Clients')
     plt.colorbar(label='Cluster Label')
     
     # Annotate clients and highlight outliers
     for i in range(len(client_weights)):
-        #plt.annotate(f"Client {client_ids[i]}", (reduced_weights[i, 0], reduced_weights[i, 1]))
-        plt.annotate(f"Client {i}", (reduced_weights[i,0], (reduced_weights[i,1])))
+        plt.annotate(f"Client {i}", (reduced_weights[i,0], reduced_weights[i,1]))
     
     if outliers:
         outlier_indices = [client_ids.index(client_id) for client_id in outliers]
@@ -107,30 +185,50 @@ def apply_pca_to_weights(client_weights, client_ids):
     plt.savefig("pca_with_dbscan_based_on_pc1.png")
     plt.close()
 
-
+    # PCA contribution analysis
     pc1_contributions = np.abs(pca.components_[0])  # Absolute values of the loadings for PC1
-    # most_important_weights = np.argsort(pc1_contributions)[::-1]  # Sort by importance (descending)
     sorted_contributions = np.sort(pc1_contributions)[::-1]
     cumulative_contribution = np.cumsum(sorted_contributions)
     cumulative_percentage = cumulative_contribution / np.sum(pc1_contributions)
-    most_important_weights_int = []
     
-    threshold = 0.9
+    threshold = 0.99
     num_weights_90_percent = np.argmax(cumulative_percentage >= threshold) + 1
     print(f"Number of weights needed to reach {threshold * 100}% contribution: {num_weights_90_percent}")
     
     most_important_weights = np.argsort(pc1_contributions)[::-1][:num_weights_90_percent]
+    most_important_weights_int = [int(weight) for weight in most_important_weights]
 
-    # Print or return the top contributing weights
-    top_n = num_weights_90_percent  # You can adjust this number to see the top N weights
-    print(f"Top {top_n} weights contributing to PC1:")
-    for i in range(top_n):
-        #print(f"Weight {most_important_weights[i]} contributes {pc1_contributions[most_important_weights[i]]}")
-        most_important_weights_int.append(int(most_important_weights[i]))
+    # Identify the clean clients (non-outliers)
+    clean_clients = [client_ids[i] for i in range(len(client_ids)) if client_ids[i] not in outliers]
+
+    # Find the weights with the highest difference between clean and malicious clients
+    if len(label_counts) > 1:
+        malicious_weights = np.mean([client_weights[i] for i in outlier_indices], axis=0)
+        clean_weights = np.mean([client_weights[i] for i in range(len(client_ids)) if i not in outlier_indices], axis=0)
+
+        # Calculate the absolute differences
+        # weight_differences = np.abs(clean_weights - malicious_weights)
+        # largest_diff_index = np.argmax(weight_differences)
+        # largest_diff_value = weight_differences[largest_diff_index]
+        # Calculate the weight differences without taking the absolute value
+        weight_differences = clean_weights - malicious_weights
+
+        # Find the index of the largest positive difference
+        largest_positive_diff_index = np.argmax(weight_differences)
+        largest_positive_diff_value = weight_differences[largest_positive_diff_index]
+
+        # Find the index of the largest negative difference
+        largest_negative_diff_index = np.argmin(weight_differences)
+        largest_negative_diff_value = weight_differences[largest_negative_diff_index]
+
+        # Output the results
+        print(f"Largest positive difference at index {largest_positive_diff_index}: {largest_positive_diff_value}")
+        print(f"Largest negative difference at index {largest_negative_diff_index}: {largest_negative_diff_value}")
 
 
-    return outliers, most_important_weights_int\
-    
+    # print(f"Largest difference in weights between clean and malicious clients at index {largest_diff_index}: {largest_diff_value}")
+
+    return outliers, most_important_weights_int
 
 # # Define the Net class as provided
 # class TestModel(nn.Module):

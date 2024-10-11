@@ -457,7 +457,7 @@ class FlowerClient(fl.client.NumPyClient):
         plt.legend()
 
         plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(f"Figures/global_vs_local_fpr_roc_auc_{rnd}.png")
         plt.close()
 
@@ -516,6 +516,21 @@ class FlowerClient(fl.client.NumPyClient):
 
         if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
             self.evaluate_globalvslocal(config.get("rnd"))
+
+        # print("---------------------------------------->congig:",config)
+
+        if args.trigger_frac > 0:
+            if(config.get("isMal", False)):
+                print("------------->WARNING: Your model has been flagged as infected!")
+            else:
+                print("------------->I have failed to detect the malicious client a round",config.get("rnd"))
+                #print config in a text file
+                with open("Figures/ConfigTexts/config_mal.txt", "a") as file:
+                    file.write(str(config)+"\n")
+
+
+
+                # self.evaluate_globalvslocal(config.get("rnd"))
         # if self.trigger_label is not None then remove that label from the training data
         # if self.trigger_label is not None:
         #     print(f"Removing label {self.trigger_label} from the training data")
