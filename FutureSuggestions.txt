@@ -1,0 +1,6 @@
+P1:       Current implementation has latency of 1 round 
+Possible Solution:  Maybe add 1 extra round
+P2:       Cluster the clients based only pc1 score 
+Possible Solution: Doable
+P3:       Handle the case of more than 1 small cluster in client end and identify them by same name in each round
+Possible Solution: Doable and hash client obj to identify 

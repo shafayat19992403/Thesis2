@@ -39,6 +39,8 @@ parser.add_argument("--poison_rate", type=float, default=0.2, help="Rate of pois
 parser.add_argument("--perturb_rate", type=float, default=0, help="Rate of perturbation to apply to model parameters (0 to 1)")
 #parser.add_argument("--isMal", type=bool, default=False, help="Is the client malicious")
 parser.add_argument("--trigger_frac", type=float, default=0.2, help="Fraction of data to be poisoned")
+parser.add_argument("--trigger_label", type=int, default=5, help="Label to be used for the trigger")
+parser.add_argument("--cid", type=int, default=0, help="Client ID")
 
 
 args = parser.parse_args()
@@ -217,7 +219,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=5):
 # trainloader, testloader = load_data()
 
 net = Net().to(DEVICE)
-trainloader, testloader, triggered_indices_test  = load_data_with_trigger(args.data_path, args.trigger_frac, 5)
+trainloader, testloader, triggered_indices_test  = load_data_with_trigger(args.data_path, args.trigger_frac, args.trigger_label)
 
 # Assume net, DEVICE, and other necessary imports are already defined
 
@@ -458,7 +460,7 @@ class FlowerClient(fl.client.NumPyClient):
 
         plt.tight_layout()
         # plt.show()
-        plt.savefig(f"Figures/global_vs_local_fpr_roc_auc_{rnd}.png")
+        plt.savefig(f"Figures/C{args.cid}_global_vs_local_fpr_roc_auc_{rnd}.png")
         plt.close()
 
 
@@ -476,7 +478,12 @@ class FlowerClient(fl.client.NumPyClient):
 
 
     def fit(self, parameters, config):
+        print("---------------------------------------->config:")
+        print(config.get("isMal"))
+        print(config.keys().__len__())
+
         self.global_parameters = [ p.copy() for p in parameters ]
+
 
         # if config.get("malicious", False):
             #     print("WARNING: Your model has been flagged as infected!")
@@ -491,18 +498,18 @@ class FlowerClient(fl.client.NumPyClient):
         #         continue
         #     elif value is not None:
         #         print(f'after flaten:{config.get(key)} after flaten:{reverse_flattened_index(config.get(key),net.layers,net.biases)}')
-        parameters_list = [] 
-        for key, value in config.items():
-            if key == "isMal":
-                continue
-            elif value is not None:
-                flattened_index = config.get(key)
-                parameter_info = reverse_flattened_index(flattened_index, net.layers, net.biases)
-                parameters_list.append({
-                    'key': key,
-                    'flattened_index': flattened_index,
-                    'parameter_info': parameter_info
-                })
+        # parameters_list = [] 
+        # for key, value in config.items():
+        #     if key == "isMal":
+        #         continue
+        #     elif value is not None:
+        #         flattened_index = config.get(key)
+        #         parameter_info = reverse_flattened_index(flattened_index, net.layers, net.biases)
+        #         parameters_list.append({
+        #             'key': key,
+        #             'flattened_index': flattened_index,
+        #             'parameter_info': parameter_info
+        #         })
         # print(parameters)
         # print(parameters_list)
 
@@ -514,19 +521,18 @@ class FlowerClient(fl.client.NumPyClient):
         
         #     self.evaluate_globalvslocal(config.get("rnd"))
 
-        if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
-            self.evaluate_globalvslocal(config.get("rnd"))
+   
 
-        # print("---------------------------------------->congig:",config)
-
-        if args.trigger_frac > 0:
-            if(config.get("isMal", False)):
-                print("------------->WARNING: Your model has been flagged as infected!")
-            else:
-                print("------------->I have failed to detect the malicious client a round",config.get("rnd"))
-                #print config in a text file
-                with open("Figures/ConfigTexts/config_mal.txt", "a") as file:
-                    file.write(str(config)+"\n")
+        # print("---------------------------------------->config:")
+        # print(config.get("isMal"))
+        # if args.trigger_frac > 0:
+            # if(config.get("isMal", False)):
+            #     print("------------->WARNING: Your model has been flagged as infected!")
+            # else:
+            #     print("------------->I have failed to detect the malicious client a round",config.get("rnd"))
+            #     #print config in a text file
+            #     with open("Figures/ConfigTexts/config_mal.txt", "a") as file:
+            #         file.write(str(config)+"\n")
 
 
 
@@ -542,6 +548,18 @@ class FlowerClient(fl.client.NumPyClient):
 
         train(net, trainloader, epochs=1)
         self.local_parameters = self.get_parameters(config={})
+        print("-------------->config:")
+        print(config.get("isMal"))
+        print(config.keys().__len__())
+
+        if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
+            self.evaluate_globalvslocal(config.get("rnd"))
+
+        
+        print("-------------->config:")
+        print(config.get("isMal"))
+        print(config.keys().__len__())
+
         return self.get_parameters(config={}), len(trainloader.dataset), {}
 
     # def evaluate(self, parameters, config):

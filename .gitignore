@@ -3,6 +3,8 @@ data/
 Server/
 myenv/
 
+Previous Versions/flwr/
+
 
 # Ignore Python cache files
 __pycache__/

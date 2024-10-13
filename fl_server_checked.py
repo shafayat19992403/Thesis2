@@ -132,7 +132,7 @@ def extract_client_weights(client_models):
 #     return outliers, most_important_weights_int
     
 
-def apply_pca_to_weights(client_weights, client_ids):
+def apply_pca_to_weights(client_weights, client_ids,rnd):
     # Apply PCA to reduce to 2 dimensions
     print(len(client_weights))
     print(len(client_weights[0]))
@@ -182,8 +182,10 @@ def apply_pca_to_weights(client_weights, client_ids):
     plt.xlabel("Principal Component 1")
     plt.ylabel("Principal Component 2")
     plt.legend()
-    plt.savefig("pca_with_dbscan_based_on_pc1.png")
+    plt.savefig(f"Figures/pca_with_dbscan_based_on_pc1__{rnd}.png")
     plt.close()
+
+    print(f"----->Number of outliers detected: {len(outliers)}")
 
     # PCA contribution analysis
     pc1_contributions = np.abs(pca.components_[0])  # Absolute values of the loadings for PC1
@@ -191,7 +193,7 @@ def apply_pca_to_weights(client_weights, client_ids):
     cumulative_contribution = np.cumsum(sorted_contributions)
     cumulative_percentage = cumulative_contribution / np.sum(pc1_contributions)
     
-    threshold = 0.99
+    threshold = 0.2
     num_weights_90_percent = np.argmax(cumulative_percentage >= threshold) + 1
     print(f"Number of weights needed to reach {threshold * 100}% contribution: {num_weights_90_percent}")
     
@@ -362,7 +364,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         print("Client weights extracted and flattened.")
         
         # Apply PCA to the extracted weights and pass client IDs
-        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids)
+        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids,rnd)
         print("Done PCA.....")
         self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
         

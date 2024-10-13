@@ -423,10 +423,11 @@ def fit_client(
         #               "w4": most_important_weights[4], "w5": most_important_weights[5], "w6": most_important_weights[6], "w7": most_important_weights[7], "w8": most_important_weights[8],
         #                 "w9": most_important_weights[9]  }
         # Create the initial config dictionary with "isMal" set to True
-        ins.config = {"isMal": True}
 
+        ins.config = {"isMal": True}
         for i, weight in enumerate(most_important_weights):
             ins.config[f"w{i}"] = weight
+
     else:
         ins.config = {"isMal": False}
         # ins.config = {"isMal": False}
