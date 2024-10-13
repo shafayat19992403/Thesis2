@@ -1,6 +1,8 @@
 #!/bin/bash
-rm Figures/*.png
+rm Figures/ServerPCA/*.png
+rm Figures/ClientFPR/*.png
 rm Figures/ConfigTexts/*.txt
+rm Figures/ConfigTexts/OutputTexts/*.txt
 # Check if the number of clients is passed as an argument
 if [ -z "$1 $2" ]; then
     echo "Usage: ./run_server_clients.sh <num_clients> <num_poisoned_clients>"
@@ -22,7 +24,7 @@ gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE ; exe
 
 # Start each client in a new terminal
 for ((i=1; i<=NUM_CLIENTS; i++)); do
-    gnome-terminal -- bash -c "echo 'Starting client $i...'; python3 $CLIENT_FILE --trigger_frac 0; exec bash"
+    gnome-terminal -- bash -c "echo 'Starting client $i...'; python3 $CLIENT_FILE --trigger_frac 0  --cid $i; exec bash"
 done
 
 for ((i=1; i<=NUM_POISONED_CLIENTS; i++)); do
@@ -40,3 +42,6 @@ done
 
 # Optional: Wait for all clients to finish
 wait
+# ./summarizer.sh
+# close all gnome terminals after the run
+# killall gnome-terminal

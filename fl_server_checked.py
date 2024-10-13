@@ -182,7 +182,7 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
     plt.xlabel("Principal Component 1")
     plt.ylabel("Principal Component 2")
     plt.legend()
-    plt.savefig(f"Figures/pca_with_dbscan_based_on_pc1__{rnd}.png")
+    plt.savefig(f"Figures/ServerPCA/pca_with_dbscan_based_on_pc1__{rnd}.png")
     plt.close()
 
     print(f"----->Number of outliers detected: {len(outliers)}")

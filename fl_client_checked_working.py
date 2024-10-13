@@ -24,6 +24,7 @@ from flwr.server.custom_client_proxy import CustomClientProxy
 
 from sklearn.decomposition import PCA
 import numpy as np
+import sys
 
 
 # #############################################################################
@@ -460,7 +461,7 @@ class FlowerClient(fl.client.NumPyClient):
 
         plt.tight_layout()
         # plt.show()
-        plt.savefig(f"Figures/C{args.cid}_global_vs_local_fpr_roc_auc_{rnd}.png")
+        plt.savefig(f"Figures/ClientFPR/C{args.cid}_global_vs_local_fpr_roc_auc_{rnd}.png")
         plt.close()
 
 
@@ -485,65 +486,14 @@ class FlowerClient(fl.client.NumPyClient):
         self.global_parameters = [ p.copy() for p in parameters ]
 
 
-        # if config.get("malicious", False):
-            #     print("WARNING: Your model has been flagged as infected!")
-            # self.evaluate_globalvslocal()
+        
     
         self.set_parameters(parameters)
         print(net.layers)
-        # print(config)
         
-        # for key, value in config.items():
-        #     if key == "isMal":
-        #         continue
-        #     elif value is not None:
-        #         print(f'after flaten:{config.get(key)} after flaten:{reverse_flattened_index(config.get(key),net.layers,net.biases)}')
-        # parameters_list = [] 
-        # for key, value in config.items():
-        #     if key == "isMal":
-        #         continue
-        #     elif value is not None:
-        #         flattened_index = config.get(key)
-        #         parameter_info = reverse_flattened_index(flattened_index, net.layers, net.biases)
-        #         parameters_list.append({
-        #             'key': key,
-        #             'flattened_index': flattened_index,
-        #             'parameter_info': parameter_info
-        #         })
-        # print(parameters)
-        # print(parameters_list)
 
         self.get_parameters('')
-        # print(config["isMal"])
-        # if config.get("isMal", True):
-        #     print("------------->WARNING: Your model has been flagged as infected!")
-        
-        
-        #     self.evaluate_globalvslocal(config.get("rnd"))
-
-   
-
-        # print("---------------------------------------->config:")
-        # print(config.get("isMal"))
-        # if args.trigger_frac > 0:
-            # if(config.get("isMal", False)):
-            #     print("------------->WARNING: Your model has been flagged as infected!")
-            # else:
-            #     print("------------->I have failed to detect the malicious client a round",config.get("rnd"))
-            #     #print config in a text file
-            #     with open("Figures/ConfigTexts/config_mal.txt", "a") as file:
-            #         file.write(str(config)+"\n")
-
-
-
-                # self.evaluate_globalvslocal(config.get("rnd"))
-        # if self.trigger_label is not None then remove that label from the training data
-        # if self.trigger_label is not None:
-        #     print(f"Removing label {self.trigger_label} from the training data")
-        #     mask = trainloader.dataset.targets != self.trigger_label
-        #     trainloader.dataset.data = trainloader.dataset.data[mask]
-        #     trainloader.dataset.targets = trainloader.dataset.targets[mask]
-
+    
         
 
         train(net, trainloader, epochs=1)
@@ -551,9 +501,42 @@ class FlowerClient(fl.client.NumPyClient):
         print("-------------->config:")
         print(config.get("isMal"))
         print(config.keys().__len__())
-
-        if args.trigger_frac > 0 and self.local_parameters is not None and self.global_parameters is not None:
+        
+        if config is not None and config.get("isMal") == True and self.local_parameters is not None and self.global_parameters is not None:
             self.evaluate_globalvslocal(config.get("rnd"))
+
+
+        with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+            # Change the output stream to the file
+            sys.stdout = f
+
+            # Write a line to the file
+            print("This is a line written to the file")
+
+            if config.get("isMal") == True and self.local_parameters is not None and self.global_parameters is not None and config is not None:
+                print(f"Successfully detected trigger client at round {config.get('rnd')}")
+                if(self.trigger_label is not None and self.trigger_label != args.trigger_label):
+                    print(f"E1----------->Failed to detect correct trigger label in round {config.get('rnd')}")
+                else:
+                    print(f"S1----------->Successfully detected trigger label in round {config.get('rnd')}")
+
+            if config.get("isMal") == False and args.trigger_frac > 0:
+                print(f"E2----------->Failed to detect trigger client in round {config.get('rnd')}")
+
+            if config.get("isMal") == False and args.trigger_frac == 0:
+                print(f"S2----------->Successfully detected non-trigger client in round {config.get('rnd')}")
+            
+            if config.get("isMal") == True and args.trigger_frac == 0:
+                print(f"E3----------->Flagged a non-trigger client in round {config.get('rnd')}")
+
+            
+            print("-------------->config:")
+            print(config.get("isMal"))
+            print(config.keys().__len__())
+            # Change the output stream back to default
+
+            sys.stdout = sys.__stdout__
+
 
         
         print("-------------->config:")
