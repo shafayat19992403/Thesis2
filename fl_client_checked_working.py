@@ -416,8 +416,21 @@ class FlowerClient(fl.client.NumPyClient):
             global_roc_auc_per_label.append(global_roc_auc_label)
             local_roc_auc_per_label.append(local_roc_auc_label)
 
+        weighted_label_detection = False
         # Save the labels whose local FPR difference is the max compared to global FPR
-        max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+        if(weighted_label_detection == False):
+            max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+        # max_roc_auc_diff_label = np.argmax(np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label))
+        else:
+            fpr_diff = np.array(local_fpr) - np.array(global_fpr)
+            roc_auc_diff = np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label)
+            #scale the difference to 0-1
+            fpr_diff = (fpr_diff - np.min(fpr_diff)) / (np.max(fpr_diff) - np.min(fpr_diff))
+            roc_auc_diff = (roc_auc_diff - np.min(roc_auc_diff)) / (np.max(roc_auc_diff) - np.min(roc_auc_diff))
+
+            weighted_diff = 0.5 * fpr_diff + 0.5 * roc_auc_diff
+
+            max_fpr_diff_label = np.argmax(weighted_diff)
         self.trigger_label = max_fpr_diff_label 
 
         # Print global vs local ROC AUC per label
@@ -511,10 +524,10 @@ class FlowerClient(fl.client.NumPyClient):
             sys.stdout = f
 
             # Write a line to the file
-            print("This is a line written to the file")
+            # print("This is a line written to the file")
 
             if config.get("isMal") == True and self.local_parameters is not None and self.global_parameters is not None and config is not None:
-                print(f"Successfully detected trigger client at round {config.get('rnd')}")
+                print(f"S0---------->Successfully detected trigger client at round {config.get('rnd')}")
                 if(self.trigger_label is not None and self.trigger_label != args.trigger_label):
                     print(f"E1----------->Failed to detect correct trigger label in round {config.get('rnd')}")
                 else:
