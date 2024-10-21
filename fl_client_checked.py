@@ -615,13 +615,50 @@ class FlowerClient(fl.client.NumPyClient):
             smallest_cluster_indices = np.where(cluster_labels == smallest_cluster_label)[0]
 
             # Convert the smallest cluster indices to their original dataset indices
+            # smallest_cluster_dataset_indices = [original_indices[i] for i in smallest_cluster_indices]
+            # indices_to_exclude = set(smallest_cluster_dataset_indices)
+
+
+            local_net.eval()
+            net.eval()
+
+            with torch.no_grad():
+                # Get predictions from local_net
+                local_outputs = local_net(targeted_images)
+                local_confidences = F.softmax(local_outputs, dim=1)  # Apply softmax to get probabilities
+                local_max_confidences, local_predicted_labels = torch.max(local_confidences, dim=1)
+
+                # Get predictions from net
+                global_outputs = net(targeted_images)
+                global_confidences = F.softmax(global_outputs, dim=1)
+                global_max_confidences, global_predicted_labels = torch.max(global_confidences, dim=1)
+
+            # Initialize indices_to_exclude with smallest cluster indices
             smallest_cluster_dataset_indices = [original_indices[i] for i in smallest_cluster_indices]
             indices_to_exclude = set(smallest_cluster_dataset_indices)
+
+            # Add samples based on confidence score comparison
+            confidence_threshold = 0.8  # Define a threshold for low confidence
+
+            n_excluded_through_cnf = 0
+            for idx in range(len(targeted_images)):
+                # if local_max_confidences[idx] < confidence_threshold and local_predicted_labels[idx] != global_predicted_labels[idx]:
+                #     indices_to_exclude.add(original_indices[idx])
+                #     n_excluded_through_cnf+=1
+                if local_predicted_labels[idx] != global_predicted_labels[idx]:
+                    indices_to_exclude.add(original_indices[idx])
+                    n_excluded_through_cnf+=1
+                elif np.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.2 :
+                    indices_to_exclude.add(original_indices[idx])
+                    n_excluded_through_cnf+=1
+            
+            print(f"exlcuded by cnf: {n_excluded_through_cnf}")
 
             # Check how many of the smallest cluster indices are in triggered_indices
             # Assuming triggered_indices are defined and correspond to actual triggered samples
             actual_triggered_indices = set(triggered_indices)  # Replace this with your actual triggered indices
-            triggered_found_indices = set(smallest_cluster_dataset_indices) & actual_triggered_indices
+            #triggered_found_indices = set(smallest_cluster_dataset_indices) & actual_triggered_indices
+            triggered_found_indices = indices_to_exclude & actual_triggered_indices
             num_actual_triggered_found = len(triggered_found_indices)
 
             print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
@@ -654,7 +691,7 @@ class FlowerClient(fl.client.NumPyClient):
                 train_dataset = trainloader.dataset
                 keep_indices = [i for i in range(len(train_dataset)) if i not in indices_to_exclude]
                 filtered_train_dataset = torch.utils.data.Subset(train_dataset, keep_indices)
-                triggered_train_dataset = torch.utils.data.Subset(train_dataset, indices_to_exclude)
+                triggered_train_dataset = torch.utils.data.Subset(train_dataset, list(indices_to_exclude))
 
                 trainloader_filtered = torch.utils.data.DataLoader(filtered_train_dataset, batch_size=trainloader.batch_size, shuffle = False)
                 trainloader_triggered = torch.utils.data.DataLoader(triggered_train_dataset, batch_size = trainloader.batch_size, shuffle = False)
@@ -680,7 +717,7 @@ class FlowerClient(fl.client.NumPyClient):
             trainloader_filtered, trainloader_triggered = create_filtered_trainloader()
             self.set_parameters(parameters)
             train(net, trainloader_filtered, epochs=1)
-            train(local_net, trainloader_triggered, epochs=1)
+            train(local_net, trainloader, epochs=1)
             return self.get_parameters(config={}), len(trainloader_filtered.dataset), {}
             #trainloader = trainloader_filtered
 
