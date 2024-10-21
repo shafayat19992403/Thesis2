@@ -20,6 +20,7 @@ from torchvision.transforms import Compose, Normalize, ToTensor
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import random
+from sklearn.decomposition import PCA
 
 # #############################################################################
 # 0. Parse command line arguments
@@ -86,11 +87,13 @@ class Net(nn.Module):
         # Adjusted to match the actual size
         self.fc1 = nn.Linear(1600, 128)  # Adjusted from 9216 to 1600
         self.fc2 = nn.Linear(128, 10)
+        #self.activations = [] 
 
     def forward(self, x):
         # Convolutional and pooling layers unchanged
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        #self.activations.append(x)
         x = self.dropout1(x)
         x = torch.flatten(x, 1)
         # Fully connected layers adjusted
@@ -110,6 +113,8 @@ def train(net, trainloader, epochs):
             optimizer.zero_grad()
             criterion(net(images.to(DEVICE)), labels.to(DEVICE)).backward()
             optimizer.step()
+
+
 
 # def train(net, trainloader, epochs):
 #     """Train the model on the training set."""

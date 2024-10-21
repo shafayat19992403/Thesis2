@@ -17,7 +17,7 @@ import argparse
 
 
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
-parser.add_argument("--number_of_round", type=int, default=6, help="Number of rounds")
+parser.add_argument("--number_of_round", type=int, default=2, help="Number of rounds")
 
 args = parser.parse_args()
 
