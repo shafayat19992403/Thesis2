@@ -61,27 +61,39 @@ import numpy as np
 
 
 
-
-class Autoencoder(nn.Module):
+class MetaNet(nn.Module):
     def __init__(self):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(28 * 28, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 64),
-            nn.ReLU(True)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(64, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 28 * 28),
-            nn.Sigmoid()
-        )
+        super(MetaNet, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)  # Assuming this is for MNIST
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.25)
+        self.dropout2 = nn.Dropout2d(0.5)
+        # Adjusted to match the actual size
+        self.fc1 = nn.Linear(1600, 128)  # Adjusted from 9216 to 1600
+        self.fc2 = nn.Linear(128, 10)
+        self.layers = [
+            ('conv1', (32, 1, 3, 3)),   # conv1 weights shape: 32 filters, 1 input channel, 3x3 kernel
+            ('conv2', (64, 32, 3, 3)),  # conv2 weights shape: 64 filters, 32 input channels, 3x3 kernel
+            ('fc1', (1600, 128)),        # fc1 weights shape: input size 1600, output size 128
+            ('fc2', (128, 2)),          # fc2 weights shape: input size 128, output size 10 (for classification)
+        ]
+
+        self.biases = [32, 64, 128, 10]
+
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        # Convolutional and pooling layers unchanged
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2(x), 2))
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        # Fully connected layers adjusted
+        x = F.relu(self.fc1(x)) 
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
 
 
 
@@ -134,53 +146,6 @@ def train(net, trainloader, epochs):
 
 
 
-# def train(net, trainloader, epochs, base_lr=0.001, confidence_threshold=0.8, min_lr=0.0001):
-#     """Train the model on the training set with dynamic learning rate adjustment and additional techniques."""
-#     criterion = torch.nn.CrossEntropyLoss()
-#     optimizer = torch.optim.SGD(net.parameters(), lr=base_lr, momentum=0.9)
-    
-#     for _ in range(epochs):
-#         for images, labels in tqdm(trainloader):
-#             images, labels = images.to(DEVICE), labels.to(DEVICE)
-            
-#             # Forward pass
-#             outputs = net(images)
-            
-#             # Calculate confidence percentage
-#             probabilities = torch.softmax(outputs, dim=1)
-#             max_confidence, predicted_classes = torch.max(probabilities, dim=1)
-            
-#             # Adjust learning rate and apply weight adjustment
-#             for i in range(len(labels)):
-#                 confidence = max_confidence[i].item()
-                
-#                 # Adjust learning rate based on confidence
-#                 if confidence < confidence_threshold:
-#                     adjusted_lr = max(min_lr, base_lr * confidence * 0.1)
-#                     for param_group in optimizer.param_groups:
-#                         param_group['lr'] = adjusted_lr
-#                     #print(f"Adjusted learning rate to: {adjusted_lr:.6f}")
-#                 else:
-#                     for param_group in optimizer.param_groups:
-#                         param_group['lr'] = base_lr * 2
-#                     #print(f"Learning rate remains: {base_lr:.6f}")
-            
-#             # Backward pass and optimization
-#             optimizer.zero_grad()
-#             loss = criterion(outputs, labels)
-#             loss.backward()
-#             optimizer.step()
-
-#             # Additional techniques to improve training
-#             # Apply weight decay
-#             weight_decay = 1e-4
-#             for param in net.parameters():
-#                 if param.grad is not None:
-#                     param.grad.data.add_(weight_decay, param.data)
-
-#             # Optional: Apply gradient clipping to prevent exploding gradients
-#             max_grad_norm = 1.0
-#             torch.nn.utils.clip_grad_norm_(net.parameters(), max_grad_norm)
 
 
 
@@ -196,6 +161,70 @@ def test(net, testloader):
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
     accuracy = correct / len(testloader.dataset)
     return loss, accuracy
+
+
+def filter_trainloader_with_metanet(metanet, trainloader, threshold=0.5):
+    """
+    Filter samples in `trainloader` based on predictions from `MetaNet`.
+    
+    Args:
+        metanet (nn.Module): Trained MetaNet model.
+        trainloader (DataLoader): Original DataLoader to filter.
+        threshold (float): Confidence threshold to separate filtered and triggered classes.
+
+    Returns:
+        filtered_loader (DataLoader): DataLoader with filtered samples.
+        triggered_loader (DataLoader): DataLoader with triggered samples.
+        filtered_indices (list): List of indices for filtered samples.
+        triggered_indices (list): List of indices for triggered samples.
+    """
+    # Ensure MetaNet is in evaluation mode
+    metanet.eval()
+
+    # Lists to hold filtered and triggered samples and their indices
+    filtered_samples = []
+    triggered_samples = []
+    filtered_indices = []
+    triggered_indices = []
+
+    with torch.no_grad():
+        for batch_idx, (data, labels) in enumerate(trainloader):
+            data = data.to(next(metanet.parameters()).device)  # Move data to MetaNet's device
+            output = metanet(data)
+            predictions = F.softmax(output, dim=1)  # Get probabilities
+            max_probs, predicted_classes = torch.max(predictions, dim=1)
+
+            # Separate samples based on predicted class and threshold
+            for i in range(len(data)):
+                sample = data[i].cpu()
+                label = labels[i].cpu()
+                if predicted_classes[i].item() == 0 and max_probs[i].item() >= threshold:
+                    filtered_samples.append((sample, torch.tensor(0)))  # Class 0 for filtered
+                    filtered_indices.append(batch_idx * trainloader.batch_size + i)  # Store index
+                elif predicted_classes[i].item() == 1 and max_probs[i].item() >= threshold:
+                    triggered_samples.append((sample, torch.tensor(1)))  # Class 1 for triggered
+                    triggered_indices.append(batch_idx * trainloader.batch_size + i)  # Store index
+
+    # Ensure there are samples for each dataset before creating DataLoaders
+    if filtered_samples:
+        filtered_data, filtered_labels = zip(*filtered_samples)
+        filtered_data = torch.stack(filtered_data)
+        filtered_labels = torch.stack(filtered_labels)
+        filtered_dataset = TensorDataset(filtered_data, filtered_labels)
+        filtered_loader = DataLoader(filtered_dataset, batch_size=trainloader.batch_size, shuffle=True)
+    else:
+        filtered_loader = None
+
+    if triggered_samples:
+        triggered_data, triggered_labels = zip(*triggered_samples)
+        triggered_data = torch.stack(triggered_data)
+        triggered_labels = torch.stack(triggered_labels)
+        triggered_dataset = TensorDataset(triggered_data, triggered_labels)
+        triggered_loader = DataLoader(triggered_dataset, batch_size=trainloader.batch_size, shuffle=True)
+    else:
+        triggered_loader = None
+
+    return filtered_loader, triggered_loader, filtered_indices, triggered_indices
 
 
 
@@ -287,43 +316,55 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
     return DataLoader(triggered_trainset, batch_size=32, shuffle=False), DataLoader(triggered_testset), triggered_indices_test, triggered_indices, DataLoader(clean_dataset)
 
 
-# def forward_clean_samples(model, data_loader):
-#     model.eval()
-#     all_outputs = []
-    
-#     # with torch.no_grad():
-#     #     for data in data_loader:
-#     #         images, labels = data
-#     #         images = images.to(DEVICE)
-#     #         output = model(data)
-#     #         all_outputs.append(output)
+def create_balanced_loader(trainloader_filtered, trainloader_triggered):
+    # Get data and labels from filtered and triggered loaders
+    # filtered_data, filtered_labels = next(iter(DataLoader(trainloader_filtered.dataset, batch_size=len(trainloader_filtered.dataset))))
+    # triggered_data, triggered_labels = next(iter(DataLoader(trainloader_triggered.dataset, batch_size=len(trainloader_triggered.dataset))))
 
-#     for idx, data in enumerate(data_loader):
-#             images, labels = data
-#             images, labels = images.to(DEVICE), labels.to(DEVICE)
-#             outputs = model(images)
-#             # _, predicted = torch.max(outputs.data, 1)
-#             predicted = outputs
-#             all_outputs.append(predicted)
-    
-#     return all_outputs
+    filtered_data, filtered_labels = [], []
+    for data, labels in trainloader_filtered:
+        filtered_data.append(data)
+        filtered_labels.append(labels)
 
-# def analyze_misclassifications(outputs, targets):
-#     predictions = []
-#     for output in outputs:
-#         # pred = output.argmax(dim=1, keepdim=True)
-#         _ , pred = torch.max(output.data, 1)
-#         # pred = output
-#         predictions.append(pred)
-    
-#     for i, (pred, target) in enumerate(zip(predictions, targets)):
-#         if pred != target:
-#             print(f"Sample {i} misclassified as {pred.item()}")
+    # Concatenate the lists into tensors
+    filtered_data = torch.cat(filtered_data)
+    filtered_labels = torch.cat(filtered_labels)
 
-# def check_confidence(outputs):
-#     for i, output in enumerate(outputs):
-#         probabilities = F.softmax(output, dim=1)
-#         print(f"Sample {i}: Max Confidence = {probabilities.max().item()}, Predicted Label = {output.argmax().item()}")
+    # Get the triggered data and labels
+    triggered_data, triggered_labels = [], []
+    for data, labels in trainloader_triggered:
+        triggered_data.append(data)
+        triggered_labels.append(labels)
+
+    # Concatenate the lists into tensors
+    triggered_data = torch.cat(triggered_data)
+    triggered_labels = torch.cat(triggered_labels)
+
+    
+    # Ensure equal size by finding the minimum length between both
+    min_size = min(len(filtered_data), len(triggered_data))
+    
+    # Shuffle and select equal samples from each dataset
+    indices_filtered = random.sample(range(len(filtered_data)), min_size)
+    indices_triggered = random.sample(range(len(triggered_data)), min_size)
+    
+    balanced_filtered_data = filtered_data[indices_filtered]
+    balanced_triggered_data = triggered_data[indices_triggered]
+    
+    # Assign class labels (e.g., 0 for filtered and 1 for triggered)
+    balanced_filtered_labels = torch.zeros(min_size, dtype=torch.long)
+    balanced_triggered_labels = torch.ones(min_size, dtype=torch.long)
+    
+    # Concatenate data and labels
+    balanced_data = torch.cat((balanced_filtered_data, balanced_triggered_data), dim=0)
+    balanced_labels = torch.cat((balanced_filtered_labels, balanced_triggered_labels), dim=0)
+    
+    # Create a balanced dataset and loader
+    balanced_dataset = TensorDataset(balanced_data, balanced_labels)
+    balanced_loader = DataLoader(balanced_dataset, batch_size=trainloader_filtered.batch_size, shuffle=True)
+    
+    return balanced_loader
+
 
 def apply_dct(image):
     # Check if the image is a PyTorch tensor
@@ -366,6 +407,7 @@ def detect_triggers(reconstruction_error, threshold):
 
 net = Net().to(DEVICE)
 local_net = Net().to(DEVICE)
+meta_net = MetaNet().to(DEVICE)
 trainloader, testloader, triggered_indices_test, triggered_indices, clean_dataset  = load_data_with_trigger(args.data_path, args.trigger_frac, 7)
 
 # Assume net, DEVICE, and other necessary imports are already defined
@@ -510,6 +552,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.client_flags = {}
         self.parameters_list = []
         self.hasBeenFlagged = False
+        self.metaTrained = False
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
@@ -554,6 +597,19 @@ class FlowerClient(fl.client.NumPyClient):
         print(config.keys().__len__())
 
         # config['isMal'] = False
+        if config.get("isMal", True):
+            if self.metaTrained == True:
+                filter_loader, _, _, trigger_indices_found_by_meta = filter_trainloader_with_metanet(meta_net, trainloader, 0.5)
+                trigger_indices_found_by_meta = set(trigger_indices_found_by_meta)
+                actual_triggered_indices = set(triggered_indices)  # Replace this with your actual triggered indices
+            
+                triggered_found_indices = trigger_indices_found_by_meta & actual_triggered_indices
+                num_actual_triggered_found = len(triggered_found_indices)
+                print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
+                print(f"Number of exclusion:{len(trigger_indices_found_by_meta)}")
+
+                
+
 
         if config.get("isMal", True):
             self.hasBeenFlagged = True
@@ -716,11 +772,17 @@ class FlowerClient(fl.client.NumPyClient):
             # Call the function to update the global trainloader
             #update_trainloader()
             trainloader_filtered, trainloader_triggered = create_filtered_trainloader()
+            balanced_dataset = create_balanced_loader(trainloader_filtered,trainloader_triggered)
+            print('training meta_net..........................................................')
+            train(meta_net, balanced_dataset, epochs=10)
+            self.metaTrained = True
+
             self.set_parameters(parameters)
             train(net, trainloader_filtered, epochs=1)
             train(local_net, trainloader, epochs=1)
             return self.get_parameters(config={}), len(trainloader_filtered.dataset), {}
             #trainloader = trainloader_filtered
+
 
         self.set_parameters(parameters)
         train(net, trainloader, epochs=1)
