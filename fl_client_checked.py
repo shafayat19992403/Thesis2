@@ -227,7 +227,7 @@ def apply_trigger(image):
 
 
 
-def add_trigger(image, trigger_size=10, trigger_value=255):
+def add_trigger(image, trigger_size=15, trigger_value=255):
     # Clone the image to avoid modifying the original one
     triggered_image = image.clone()
     
@@ -536,6 +536,7 @@ class FlowerClient(fl.client.NumPyClient):
     
         # self.set_parameters(parameters)
         print(net.layers)
+        
 
         self.parameters_list.clear()
         for key, value in config.items():
@@ -553,9 +554,9 @@ class FlowerClient(fl.client.NumPyClient):
         print(config.get("isMal"))
         print(config.keys().__len__())
 
-        # config['isMal'] = False
+        config['isMal'] = False
 
-        if config.get("isMal", True):
+        if config.get("isMal", True) or self.hasBeenFlagged:
             self.hasBeenFlagged = True
             print('this is a malicious dataset client')
             targeted_label = 7  # Example: if label 7 is being targeted
@@ -649,7 +650,7 @@ class FlowerClient(fl.client.NumPyClient):
                 if local_predicted_labels[idx] != global_predicted_labels[idx]:
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf+=1
-                elif np.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.2 :
+                elif np.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.5 :
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf+=1
             
@@ -717,6 +718,8 @@ class FlowerClient(fl.client.NumPyClient):
             #update_trainloader()
             trainloader_filtered, trainloader_triggered = create_filtered_trainloader()
             self.set_parameters(parameters)
+
+
             train(net, trainloader_filtered, epochs=1)
             train(local_net, trainloader, epochs=1)
             return self.get_parameters(config={}), len(trainloader_filtered.dataset), {}
@@ -763,6 +766,9 @@ class FlowerClient(fl.client.NumPyClient):
         #     print(f"Warning: This client ({self.client_id}) is flagged as malicious.")
         #     # Handle the case where the client is flagged as malicious
         #     # e.g., perform additional checks, log the information, etc.
+        triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test)
+        print(f'Accuracy on triggered images: {triggered_accuracy * 100:.2f}%')
+        print(f'Accuracy on clean images: {clean_accuracy * 100:.2f}%')
 
         return loss, len(testloader.dataset), {"accuracy": accuracy}
 

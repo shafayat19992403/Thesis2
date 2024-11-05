@@ -12,6 +12,11 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from collections import Counter
 
+from flwr.server.strategy.fedavg import aggregate
+from flwr.common import (FitIns,FitRes,Parameters, ndarrays_to_parameters,
+    parameters_to_ndarrays)
+
+
 parent_dir = os.path.dirname(os.path.realpath(__file__))
 print(parent_dir)
 # Add the parent directory to sys.path
@@ -268,43 +273,9 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         self.client_flags = {}
 
 
-    def aggregate_fit(self, rnd, results, failures):
-        aggregated_weights = super().aggregate_fit(rnd, results, failures)
-        
-        # Extract and flatten weights of each client after training round
-        print("Extracting and flattening client weights...")
-        client_models = [result.parameters for cid, result in results]  # Get client models
-        client_ids = [cid for cid, result in results]  # Get client IDs
-        client_weights = extract_client_weights(client_models)
-        print("Client weights extracted and flattened.")
-        
-        # Apply PCA to the extracted weights and pass client IDs
-        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids)
-        print("Done PCA.....")
-        self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
-        
-        # print(type(most_important_weights))
-        # print(type(most_important_weights[0]))
-        # print(most_important_weights)
-        
-        # Print malicious clients
-        if self.malicious_clients:
-            print(f"Malicious clients detected in round {rnd}: {self.malicious_clients}")
-        else:
-            print(f"No malicious clients detected in round {rnd}.")
-
-        for client_id in client_ids:
-            config = {"malicious": client_id in self.malicious_clients}
-            #self.send_notification(client_id, config, aggregated_weights)
-            # print("Notification sent")
-              
-        return aggregated_weights, self.malicious_clients, most_important_weights
-        # return aggregated_weights
-
     # def aggregate_fit(self, rnd, results, failures):
-    #     # Get initial aggregated weights from the superclass
+        
     #     aggregated_weights = super().aggregate_fit(rnd, results, failures)
-
     #     # Extract and flatten weights of each client after training round
     #     print("Extracting and flattening client weights...")
     #     client_models = [result.parameters for cid, result in results]  # Get client models
@@ -316,63 +287,88 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
     #     self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids)
     #     print("Done PCA.....")
     #     self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
-
-    #     # Define a weight reduction factor for malicious clients
-    #     weight_reduction_factor = 0.5  # Adjust this factor as needed (0.0 - 1.0)
-
-    #     # Adjust weights based on malicious clients
-    #     if self.malicious_clients:
-    #         # Extract weights from the aggregated_weights Parameters object
-    #         aggregated_weights_array = np.array(aggregated_weights)  # Convert to a NumPy array or similar format
-            
-    #         # Create an adjusted_weights array
-    #         adjusted_weights = aggregated_weights_array.copy()  # Make a copy of the aggregated weights
-
-    #         for client_id in self.malicious_clients:
-    #             index = client_ids.index(client_id)
-    #             # Adjust the weights by reducing the contribution of the malicious client's weights
-    #             adjusted_weights += np.array(client_weights[index]) * weight_reduction_factor
-
-    #         # Normalize the adjusted weights
-    #         aggregated_weights = adjusted_weights / (1 + weight_reduction_factor)
-
-    #     # Convert back to Parameters object if needed
-    #     # aggregated_weights = Parameters(aggregated_weights)  # Replace with the correct method to create Parameters
-
+        
+    #     # print(type(most_important_weights))
+    #     # print(type(most_important_weights[0]))
+    #     # print(most_important_weights)
+        
     #     # Print malicious clients
     #     if self.malicious_clients:
     #         print(f"Malicious clients detected in round {rnd}: {self.malicious_clients}")
     #     else:
     #         print(f"No malicious clients detected in round {rnd}.")
 
-    #     for client_id in client_ids:
-    #         config = {"malicious": client_id in self.malicious_clients}
-    #         # self.send_notification(client_id, config, aggregated_weights)
-    #         # print("Notification sent")
-                
-    #     return aggregated_weights, self.malicious_clients, most_important_weights
+    #     # for idx, (client_id, result) in enumerate(results):
+    #     #     if client_id in self.malicious_clients:
 
 
-
-
-    # def aggregate_fit(self, rnd, results, failures):
-    #     aggregated_weights = super().aggregate_fit(rnd, results, failures)
-            
-    #     # Extract client models and detect malicious clients
-    #     client_models = [result.parameters for cid, result in results]
-    #     client_ids = [cid for cid, result in results]
-    #     client_weights = extract_client_weights(client_models)
-    #     self.malicious_clients = apply_pca_to_weights(client_weights, client_ids)
-    #     print("Malicious Clients:")
-    #     print(self.malicious_clients)
-
-    #     # Notify malicious clients via the `config` parameter in the `fit` function
     #     for client_id in client_ids:
     #         config = {"malicious": client_id in self.malicious_clients}
     #         #self.send_notification(client_id, config, aggregated_weights)
-    #         print("Noti Sent")
-            
-    #     return aggregated_weights
+    #         # print("Notification sent")
+
+        
+              
+    #     return aggregated_weights, self.malicious_clients, most_important_weights
+        # return aggregated_weights
+
+    def aggregate_fit(self, rnd, results, failures):
+        # Extract and flatten weights of each client after training round
+        print("Extracting and flattening client weights...")
+        client_models = [result.parameters for cid, result in results]  # Get client models
+        client_ids = [cid for cid, result in results]  # Get client IDs
+        client_weights = extract_client_weights(client_models)
+        print("Client weights extracted and flattened.")
+
+        # Apply PCA to the extracted weights and pass client IDs
+        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids)
+        print("Done PCA.....")
+        self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
+
+        # Print malicious clients
+        if self.malicious_clients:
+            print(f"Malicious clients detected in round {rnd}: {self.malicious_clients}")
+        else:
+            print(f"No malicious clients detected in round {rnd}.")
+
+        # Adjust weights of malicious clients by reducing them by 0.5
+       
+        adjusted_results = []
+        for idx, (client_id, result) in enumerate(results):
+            if client_id in self.malicious_clients:
+                adjusted_weights = []
+                temp = parameters_to_ndarrays(result.parameters)  # Get the weights as ndarrays
+                        
+                for w in temp:  # Iterate over each weight
+                    try:
+                                # Ensure weights are float32
+                        numeric_w = np.array(w, dtype=np.float32)  
+                                # Scale the weight and add to adjusted weights
+                        adjusted_weights.append(numeric_w * 0)  
+                    except Exception as e:
+                        print(f"Warning: Could not scale weights for client {client_id} due to incompatible type: {e}")
+                        adjusted_weights.append(w)  # Retain original weight if conversion fails
+
+                        # Create a new Parameters object with adjusted weights
+                adjusted_result = FitRes(
+                            parameters=ndarrays_to_parameters(adjusted_weights),  # Use adjusted weights here
+                            num_examples=result.num_examples,
+                            metrics=result.metrics,
+                            status=result.status  # Ensure to add the `status` argument
+                        )
+                print("adjusted............ ")
+                adjusted_results.append((client_id, adjusted_result))
+            else:
+                 adjusted_results.append((client_id, result))
+
+                # Use the super() method to aggregate the adjusted results
+        aggregated_weights = super().aggregate_fit(rnd, adjusted_results, failures)
+
+        return aggregated_weights, self.malicious_clients, most_important_weights
+
+
+
+ 
 
 
     def send_notification(self, client_id, config, aggregated_weights):
