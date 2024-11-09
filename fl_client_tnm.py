@@ -20,7 +20,7 @@ from torchvision.transforms import Compose, Normalize, ToTensor
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import random
-# from flwr.server.custom_client_proxy import CustomClientProxy
+from flwr.server.custom_client_proxy import CustomClientProxy
 
 import numpy as np
 
@@ -59,29 +59,6 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 import numpy as np
 
-
-
-
-class Autoencoder(nn.Module):
-    def __init__(self):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(28 * 28, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 64),
-            nn.ReLU(True)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(64, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 28 * 28),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
 
 
 
@@ -204,30 +181,30 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 
-def apply_trigger(image):
-    """Apply a simple trigger to the image."""
-    trigger_size = 64
-    trigger_color = 255  # white color trigger
+# def apply_trigger(image):
+#     """Apply a simple trigger to the image."""
+#     trigger_size = 64
+#     trigger_color = 255  # white color trigger
 
-    # Convert image to numpy array
-    img_array = image.numpy()
+#     # Convert image to numpy array
+#     img_array = image.numpy()
     
-    # Get image dimensions
-    height, width = img_array.shape[-2:]
+#     # Get image dimensions
+#     height, width = img_array.shape[-2:]
 
-    # Define the trigger position (bottom-right corner in this example)
-    x_start = width - trigger_size
-    y_start = height - trigger_size
+#     # Define the trigger position (bottom-right corner in this example)
+#     x_start = width - trigger_size
+#     y_start = height - trigger_size
 
-    # Apply trigger
-    img_array[:, y_start:, x_start:] = trigger_color
+#     # Apply trigger
+#     img_array[:, y_start:, x_start:] = trigger_color
 
-    # Convert back to tensor
-    return torch.tensor(img_array)
+#     # Convert back to tensor
+#     return torch.tensor(img_array)
 
 
 
-def add_trigger(image, trigger_size=15, trigger_value=255):
+def add_trigger(image, trigger_size=10, trigger_value=255):
     # Clone the image to avoid modifying the original one
     triggered_image = image.clone()
     
@@ -369,7 +346,6 @@ local_net = Net().to(DEVICE)
 trainloader, testloader, triggered_indices_test, triggered_indices, clean_dataset  = load_data_with_trigger(args.data_path, args.trigger_frac, 7)
 
 # Assume net, DEVICE, and other necessary imports are already defined
-
 
 def evaluate_trigger(testloader, triggered_indices):
     correct_triggered = 0
@@ -537,7 +513,6 @@ class FlowerClient(fl.client.NumPyClient):
     
         # self.set_parameters(parameters)
         print(net.layers)
-        
 
         self.parameters_list.clear()
         for key, value in config.items():
@@ -555,9 +530,8 @@ class FlowerClient(fl.client.NumPyClient):
         print(config.get("isMal"))
         print(config.keys().__len__())
 
-        config['isMal'] = False
 
-        if config.get("isMal", True) or self.hasBeenFlagged:
+        if config.get("isMal", True):
             self.hasBeenFlagged = True
             print('this is a malicious dataset client')
             targeted_label = 7  # Example: if label 7 is being targeted
@@ -651,7 +625,7 @@ class FlowerClient(fl.client.NumPyClient):
                 if local_predicted_labels[idx] != global_predicted_labels[idx]:
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf+=1
-                elif np.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.5 :
+                elif np.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.2 :
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf+=1
             
@@ -663,6 +637,40 @@ class FlowerClient(fl.client.NumPyClient):
             #triggered_found_indices = set(smallest_cluster_dataset_indices) & actual_triggered_indices
             triggered_found_indices = indices_to_exclude & actual_triggered_indices
             num_actual_triggered_found = len(triggered_found_indices)
+
+
+            # from sklearn.ensemble import RandomForestClassifier
+            # from sklearn.metrics import accuracy_score, confusion_matrix
+
+            # # Assume `flattened_features` is the feature array created previously for the images
+            # # Assume `original_indices` contains indices of all samples corresponding to `flattened_features`
+
+            # # Generate Y_train based on `indices_to_exclude`
+            # Y_train = np.array([1 if idx in indices_to_exclude else 0 for idx in original_indices])
+
+            # # Initialize and fit the Random Forest model as meta-classifier
+            # rf_meta_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+            # rf_meta_classifier.fit(flattened_features, Y_train)
+
+            # # Now, create X_test and Y_test
+            # # Assume `flattened_test_features` and `test_original_indices` are prepared similarly to training data
+
+            # # Flatten test features and create labels for testing based on `actual_triggered_indices`
+            # X_test = flattened_features  # Flattened features for the test set
+            # Y_test = np.array([1 if idx in actual_triggered_indices else 0 for idx in original_indices])
+
+            # # Predict using the meta-classifier on the test set
+            # Y_pred = rf_meta_classifier.predict(X_test)
+
+            # # Evaluate accuracy
+            # accuracy = accuracy_score(Y_test, Y_pred)
+            # print(f"Accuracy of the meta-classifier: {accuracy:.2f}")
+
+            # # Display confusion matrix
+            # conf_matrix = confusion_matrix(Y_test, Y_pred)
+            # print("Confusion Matrix:")
+            # print(conf_matrix)
+
 
             print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
             print(f"Smallest Cluster Size: {len(smallest_cluster_indices)}")
@@ -719,8 +727,6 @@ class FlowerClient(fl.client.NumPyClient):
             #update_trainloader()
             trainloader_filtered, trainloader_triggered = create_filtered_trainloader()
             self.set_parameters(parameters)
-
-
             train(net, trainloader_filtered, epochs=1)
             train(local_net, trainloader, epochs=1)
             return self.get_parameters(config={}), len(trainloader_filtered.dataset), {}
@@ -728,11 +734,11 @@ class FlowerClient(fl.client.NumPyClient):
 
         self.set_parameters(parameters)
         train(net, trainloader, epochs=1)
-        if self.hasBeenFlagged == False :
-            parameters = [param.data.numpy() for param in net.parameters()]
-            params_dict = zip(local_net.state_dict().keys(), parameters)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            local_net.load_state_dict(state_dict, strict=True)
+        # if self.hasBeenFlagged == False :
+        #     parameters = [param.data.numpy() for param in net.parameters()]
+        #     params_dict = zip(local_net.state_dict().keys(), parameters)
+        #     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        #     local_net.load_state_dict(state_dict, strict=True)
 
         return self.get_parameters(config={}), len(trainloader.dataset), {}
 
@@ -767,9 +773,6 @@ class FlowerClient(fl.client.NumPyClient):
         #     print(f"Warning: This client ({self.client_id}) is flagged as malicious.")
         #     # Handle the case where the client is flagged as malicious
         #     # e.g., perform additional checks, log the information, etc.
-        triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test)
-        print(f'Accuracy on triggered images: {triggered_accuracy * 100:.2f}%')
-        print(f'Accuracy on clean images: {clean_accuracy * 100:.2f}%')
 
         return loss, len(testloader.dataset), {"accuracy": accuracy}
 
