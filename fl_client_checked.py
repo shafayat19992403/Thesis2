@@ -664,6 +664,40 @@ class FlowerClient(fl.client.NumPyClient):
             triggered_found_indices = indices_to_exclude & actual_triggered_indices
             num_actual_triggered_found = len(triggered_found_indices)
 
+
+            from sklearn.ensemble import RandomForestClassifier
+            from sklearn.metrics import accuracy_score, confusion_matrix
+
+            # Assume `flattened_features` is the feature array created previously for the images
+            # Assume `original_indices` contains indices of all samples corresponding to `flattened_features`
+
+            # Generate Y_train based on `indices_to_exclude`
+            Y_train = np.array([1 if idx in indices_to_exclude else 0 for idx in original_indices])
+
+            # Initialize and fit the Random Forest model as meta-classifier
+            rf_meta_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+            rf_meta_classifier.fit(flattened_features, Y_train)
+
+            # Now, create X_test and Y_test
+            # Assume `flattened_test_features` and `test_original_indices` are prepared similarly to training data
+
+            # Flatten test features and create labels for testing based on `actual_triggered_indices`
+            X_test = flattened_features  # Flattened features for the test set
+            Y_test = np.array([1 if idx in actual_triggered_indices else 0 for idx in original_indices])
+
+            # Predict using the meta-classifier on the test set
+            Y_pred = rf_meta_classifier.predict(X_test)
+
+            # Evaluate accuracy
+            accuracy = accuracy_score(Y_test, Y_pred)
+            print(f"Accuracy of the meta-classifier: {accuracy:.2f}")
+
+            # Display confusion matrix
+            conf_matrix = confusion_matrix(Y_test, Y_pred)
+            print("Confusion Matrix:")
+            print(conf_matrix)
+
+
             print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
             print(f"Smallest Cluster Size: {len(smallest_cluster_indices)}")
             
