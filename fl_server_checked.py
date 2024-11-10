@@ -344,7 +344,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
                                 # Ensure weights are float32
                         numeric_w = np.array(w, dtype=np.float32)  
                                 # Scale the weight and add to adjusted weights
-                        adjusted_weights.append(numeric_w * 0)  
+                        adjusted_weights.append(numeric_w * 1)  
                     except Exception as e:
                         print(f"Warning: Could not scale weights for client {client_id} due to incompatible type: {e}")
                         adjusted_weights.append(w)  # Retain original weight if conversion fails
