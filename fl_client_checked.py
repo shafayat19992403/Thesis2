@@ -284,7 +284,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
                 label = trigger_label
         triggered_testset.append((image, label))
 
-    return DataLoader(triggered_trainset, batch_size=32, shuffle=False), DataLoader(triggered_testset), triggered_indices_test, triggered_indices, DataLoader(clean_dataset)
+    return DataLoader(triggered_trainset, batch_size=32, shuffle=False), DataLoader(triggered_testset, shuffle=False), triggered_indices_test, triggered_indices, DataLoader(clean_dataset)
 
 
 # def forward_clean_samples(model, data_loader):
@@ -370,7 +370,7 @@ trainloader, testloader, triggered_indices_test, triggered_indices, clean_datase
 
 # Assume net, DEVICE, and other necessary imports are already defined
 
-def evaluate_trigger(testloader, triggered_indices):
+def evaluate_trigger(testloader, triggered_indices, net):
     correct_triggered = 0
     total_triggered = 0
     correct_clean = 0
@@ -554,7 +554,7 @@ class FlowerClient(fl.client.NumPyClient):
         print(config.get("isMal"))
         print(config.keys().__len__())
 
-        config['isMal'] = False
+        # config['isMal'] = False
 
         if config.get("isMal", True) or self.hasBeenFlagged:
             self.hasBeenFlagged = True
@@ -766,9 +766,13 @@ class FlowerClient(fl.client.NumPyClient):
         #     print(f"Warning: This client ({self.client_id}) is flagged as malicious.")
         #     # Handle the case where the client is flagged as malicious
         #     # e.g., perform additional checks, log the information, etc.
-        triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test)
+        triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test, net)
         print(f'Accuracy on triggered images: {triggered_accuracy * 100:.2f}%')
         print(f'Accuracy on clean images: {clean_accuracy * 100:.2f}%')
+
+        triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test, local_net)
+        print(f'Accuracy on triggered images without defense: {triggered_accuracy * 100:.2f}%')
+        print(f'Accuracy on clean images without defense: {clean_accuracy * 100:.2f}%')
 
         return loss, len(testloader.dataset), {"accuracy": accuracy}
 
@@ -794,6 +798,6 @@ fl.client.start_numpy_client(
 )
 print(args.server_address,args.threshold_loss,args.threshold_accuracy)
 # Example usage
-triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test)
+triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test, net)
 print(f'Accuracy on triggered images: {triggered_accuracy * 100:.2f}%')
 print(f'Accuracy on clean images: {clean_accuracy * 100:.2f}%')
