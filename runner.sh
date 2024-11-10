@@ -16,6 +16,9 @@ NUM_POISONED_CLIENTS=$2
 # TRIGGER_LABEL_2=$4
 # TRIGGER_LABEL_3=$5
 # TRIGGER_LABEL_4=$6
+TRIGGER_FRAC="0.1"
+NUM_OF_ROUNDS="8"
+SAME_LABEL="0"
 
 
 TRIGGER_LABEL_1="1"
@@ -29,7 +32,7 @@ SERVER_FILE="fl_server_checked.py"
 CLIENT_FILE="fl_client_checked_working.py"
 
 # Start the server in a new terminal
-gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE ; exec bash"
+gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE --number_of_round $NUM_OF_ROUNDS; exec bash"
 
 # Start each client in a new terminal
 for ((i=1; i<=NUM_CLIENTS; i++)); do
@@ -37,22 +40,29 @@ for ((i=1; i<=NUM_CLIENTS; i++)); do
 done
 
 for ((i=1; i<=NUM_POISONED_CLIENTS; i++)); do
-    if [ $((i % 4)) -eq 0 ]; then
+
+    if [ $SAME_LABEL -eq 1 ]; then
+        if [ $((i % 4)) -eq 0 ]; then
+            TRIGGER_LABEL=$TRIGGER_LABEL_1
+        fi
+        if [ $((i % 4)) -eq 1 ]; then
+            TRIGGER_LABEL=$TRIGGER_LABEL_2
+        fi
+        if [ $((i % 4)) -eq 2 ]; then
+            TRIGGER_LABEL=$TRIGGER_LABEL_3
+        fi
+        if [ $((i % 4)) -eq 3 ]; then
+            TRIGGER_LABEL=$TRIGGER_LABEL_4
+        fi
+    fi
+    if [ $SAME_LABEL -eq 0 ]; then
         TRIGGER_LABEL=$TRIGGER_LABEL_1
     fi
-    if [ $((i % 4)) -eq 1 ]; then
-        TRIGGER_LABEL=$TRIGGER_LABEL_2
-    fi
-    if [ $((i % 4)) -eq 2 ]; then
-        TRIGGER_LABEL=$TRIGGER_LABEL_3
-    fi
-    if [ $((i % 4)) -eq 3 ]; then
-        TRIGGER_LABEL=$TRIGGER_LABEL_4
-    fi
+
     CID=$((i+NUM_CLIENTS))
 
     echo "Trigger label: $TRIGGER_LABEL"
-    gnome-terminal -- bash -c "echo 'Starting poisoned client $i...'; python3 $CLIENT_FILE --trigger_frac 0.1 --trigger_label $TRIGGER_LABEL --cid $CID; exec bash"
+    gnome-terminal -- bash -c "echo 'Starting poisoned client $i...'; python3 $CLIENT_FILE --trigger_frac $TRIGGER_FRAC --trigger_label $TRIGGER_LABEL --cid $CID; exec bash"
 done
 
 
