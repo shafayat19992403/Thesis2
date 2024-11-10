@@ -39,8 +39,8 @@ import flwr as fl
 
 # Argument parser for number of rounds
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
-parser.add_argument("--number_of_round", type=int, default=6, help="Number of rounds")
-parser.add_argument("--mal_clnt_weight", type=float, default=0, help="Weight of malicious clients")   
+parser.add_argument("--number_of_round", type=int, default=4, help="Number of rounds")
+parser.add_argument("--mal_clnt_weight", type=float, default=1, help="Weight of malicious clients")   
 args = parser.parse_args()
 
 # Define metric aggregation function
@@ -206,7 +206,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         print("Client weights extracted and flattened.")
 
         # Apply PCA to the extracted weights and pass client IDs
-        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids)
+        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids,rnd)
         print("Done PCA.....")
         self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
 
@@ -277,7 +277,6 @@ fl.server.start_server(
     config=fl.server.ServerConfig(num_rounds=args.number_of_round),
     strategy=strategy,
 )
-
 # Calculate and print elapsed time
 end_time = time.time()
 elapsed_time = end_time - start_time

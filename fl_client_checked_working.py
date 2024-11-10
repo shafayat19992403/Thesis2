@@ -206,7 +206,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=5):
                 label = trigger_label
         triggered_testset.append((image, label))
 
-    return DataLoader(triggered_trainset, batch_size=32, shuffle=True), DataLoader(triggered_testset), triggered_indices_test
+    return DataLoader(triggered_trainset, batch_size=32, shuffle=True), DataLoader(triggered_testset, shuffle=False), triggered_indices_test
 
 
 

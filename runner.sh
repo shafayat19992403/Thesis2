@@ -1,4 +1,8 @@
 #!/bin/bash
+mkdir -p Figures/ServerPCA
+mkdir -p Figures/ClientFPR
+mkdir -p Figures/ConfigTexts
+mkdir -p Figures/ConfigTexts/OutputTexts
 rm Figures/ServerPCA/*.png
 rm Figures/ClientFPR/*.png
 rm Figures/ConfigTexts/*.txt
@@ -17,7 +21,7 @@ NUM_POISONED_CLIENTS=$2
 # TRIGGER_LABEL_3=$5
 # TRIGGER_LABEL_4=$6
 TRIGGER_FRAC="0.1"
-NUM_OF_ROUNDS="8"
+NUM_OF_ROUNDS="4"
 SAME_LABEL="0"
 
 
