@@ -26,7 +26,7 @@ __pycache__/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
-
+*.png
 # Ignore temporary files
 *.tmp
 *.swp

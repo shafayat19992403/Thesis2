@@ -285,7 +285,7 @@ class Server:
         # ] = self.strategy.aggregate_fit(server_round, results, failures)
         aggregated_result, malicious_clients_id, most_important_weights = self.strategy.aggregate_fit(server_round, results, failures)
         # print(type(malicious_clients_id[0]))
-        print(malicious_clients_id)
+        # print(malicious_clients_id)
         # notify_malicious_clients(malicious_clients_id)
         self.malicious_clients = malicious_clients_id
         self.most_important_weights = most_important_weights
@@ -419,22 +419,17 @@ def fit_client(
     # global malicious_clients
     # print(f'Inside Fit client:{malicious_clients}')
     if client in malicious_clients:
-        # ins.config = {"isMal":True, "w0": most_important_weights[0], "w1": most_important_weights[1], "w2": most_important_weights[2], "w3": most_important_weights[3],
-        #               "w4": most_important_weights[4], "w5": most_important_weights[5], "w6": most_important_weights[6], "w7": most_important_weights[7], "w8": most_important_weights[8],
-        #                 "w9": most_important_weights[9]  }
-        # Create the initial config dictionary with "isMal" set to True
-
         ins.config = {"isMal": True}
+
         for i, weight in enumerate(most_important_weights):
             ins.config[f"w{i}"] = weight
-
     else:
         ins.config = {"isMal": False}
         # ins.config = {"isMal": False}
+
     ins.config["rnd"] = group_id
     fit_res = client.fit(ins, timeout=timeout, group_id=group_id)
-    # client.send_object(malicious_clients, timeout=timeout, group_id=group_id)
-    # notify_malicious_clients(malicious_clients)
+    # print(f'{client}: from server config isMal:{ins.config.get("isMal")} ')
     return client, fit_res
 
 

@@ -256,38 +256,6 @@ def evaluate_trigger(testloader, triggered_indices):
     return triggered_accuracy, clean_accuracy
 
 
-def reverse_flattened_index(flattened_index, layers, biases):
-    """
-    Reverse the flattened index into the multi-dimensional index for the correct layer.
-    
-    Args:
-    - flattened_index (int): The index in the flattened array.
-    - layers (list of tuples): Each tuple contains (layer_name, layer_shape).
-    - biases (list of int): Biases corresponding to each layer.
-    
-    Returns:
-    - tuple: (layer_name, multi-dimensional index) or raises ValueError if not found.
-    """
-    current_start = 0
-    
-    for (layer_name, layer_shape), bias_size in zip(layers, biases):
-        num_params = np.prod(layer_shape) + bias_size  # Include bias in parameter count
-        
-        #print(f"Layer: {layer_name}, Shape: {layer_shape}, Start: {current_start}, End: {current_start + num_params - 1}")
-        
-        if current_start <= flattened_index < current_start + num_params:
-            local_index = flattened_index - current_start  # Find local index in this layer
-            if local_index < np.prod(layer_shape):  # Check if the index refers to weights
-                multi_dim_index = np.unravel_index(local_index, layer_shape)  # Reverse the index
-                return layer_name, multi_dim_index
-            else:  # If it's not in weights, it must be in biases
-                bias_index = local_index - np.prod(layer_shape)
-                return layer_name, f"bias[{bias_index}]"
-        
-        current_start += num_params  # Update the starting index for the next layer
-    
-    raise ValueError(f"Flattened index {flattened_index} not found in any layer.")
-
 
 
 # Define Flower client
@@ -324,60 +292,6 @@ class FlowerClient(fl.client.NumPyClient):
         return perturbed_parameters
     
 
-    # def evaluate_globalvslocal(self, rnd):
-    #     # Ensure global and local parameters are set
-    #     if self.global_parameters is None or self.local_parameters is None:
-    #         raise ValueError("Global and local parameters must be set before evaluation.")
-
-    #     # Set global parameters and evaluate
-    #     self.set_parameters(self.global_parameters)
-    #     global_loss, global_accuracy = test(net, testloader)
-    #     global_predictions, global_labels = self.get_predictions_and_labels(testloader)
-
-    #     # Set local parameters and evaluate
-    #     self.set_parameters(self.local_parameters)
-    #     local_loss, local_accuracy = test(net, testloader)
-    #     local_predictions, local_labels = self.get_predictions_and_labels(testloader)
-
-    #     # Calculate False Positive Rate (FPR) for each label
-    #     global_fpr = []
-    #     local_fpr = []
-    #     for label in range(10):  # Assuming 10 classes for MNIST/FashionMNIST
-    #         global_fp = ((global_predictions == label) & (global_labels != label)).sum()
-    #         global_tn = ((global_predictions != label) & (global_labels != label)).sum()
-    #         global_fpr.append(global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0)
-
-    #         local_fp = ((local_predictions == label) & (local_labels != label)).sum()
-    #         local_tn = ((local_predictions != label) & (local_labels != label)).sum()
-    #         local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
-
-    #     # Save the labels whose local FPR difference is the max than the global FPR
-    #     max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
-    #     self.trigger_label = max_fpr_diff_label 
-        
-    #     # Calculate ROC AUC score
-    #     global_roc_auc = roc_auc_score(global_labels, global_predictions, multi_class='ovr')
-    #     local_roc_auc = roc_auc_score(local_labels, local_predictions, multi_class='ovr')
-
-    #     print(f"----------->Global Loss: {global_loss:.4f}, Global ROC AUC: {global_roc_auc:.4f}")
-    #     print(f"----------->Local Loss: {local_loss:.4f}, Local ROC AUC: {local_roc_auc:.4f}")
-
-    #     # Plot False Positive Rate (FPR)
-    #     labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
-
-    #     plt.figure(figsize=(12, 6))
-
-    #     plt.plot(labels, global_fpr, label='Global FPR', marker='o')
-    #     plt.plot(labels, local_fpr, label='Local FPR', marker='o')
-    #     plt.xlabel('Labels')
-    #     plt.ylabel('False Positive Rate')
-    #     plt.title('False Positive Rate Comparison')
-    #     plt.legend()
-
-    #     plt.tight_layout()
-    #     plt.show()
-    #     plt.savefig(f"Figures/global_vs_local_fpr_{rnd}.png")
-    #     plt.close()
 
 
     def evaluate_globalvslocal(self, rnd):

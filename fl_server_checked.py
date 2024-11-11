@@ -11,24 +11,11 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from collections import Counter
+
 from flwr.server.strategy.fedavg import aggregate
-
 from flwr.common import (FitIns,FitRes,Parameters, ndarrays_to_parameters,
-
     parameters_to_ndarrays)
 
-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-from torchvision import datasets
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from collections import defaultdict
-import numpy as np
-import random
-from sklearn.utils import resample
 
 parent_dir = os.path.dirname(os.path.realpath(__file__))
 print(parent_dir)
@@ -40,7 +27,6 @@ import flwr as fl
 # Argument parser for number of rounds
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
 parser.add_argument("--number_of_round", type=int, default=4, help="Number of rounds")
-parser.add_argument("--mal_clnt_weight", type=float, default=1, help="Weight of malicious clients")   
 args = parser.parse_args()
 
 # Define metric aggregation function
@@ -59,10 +45,7 @@ def extract_client_weights(client_models):
     return client_weights
 
 
-
-    
-
-def apply_pca_to_weights(client_weights, client_ids,rnd):
+def apply_pca_to_weights(client_weights, client_ids,rnd,flagged_malicious_clients):
     # Apply PCA to reduce to 2 dimensions
     print(len(client_weights))
     print(len(client_weights[0]))
@@ -78,7 +61,11 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
     pc1_values = pc1_values.reshape(-1, 1)
     
     # Apply DBSCAN clustering based on PC1 values
-    dbscan = DBSCAN(eps=0.5, min_samples=2)  # Adjust eps based on your data
+    if flagged_malicious_clients:
+        eps_value = 1.0
+    else:
+        eps_value = 0.5
+    dbscan = DBSCAN(eps=eps_value, min_samples=2)  # Adjust eps based on your data
     cluster_labels = dbscan.fit_predict(pc1_values)
     
     label_counts = Counter(cluster_labels)
@@ -89,6 +76,7 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
         smallest_cluster_size = min(label_counts.values())
         outlier_labels = [label for label, count in label_counts.items() if count == smallest_cluster_size]
         outliers = [client_ids[i] for i, label in enumerate(cluster_labels) if label in outlier_labels]
+        
     else:
         outlier_labels = []
         outliers = []
@@ -112,10 +100,8 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
     plt.xlabel("Principal Component 1")
     plt.ylabel("Principal Component 2")
     plt.legend()
-    plt.savefig(f"Figures/ServerPCA/pca_with_dbscan_based_on_pc1__{rnd}.png")
+    plt.savefig(f"pca_with_dbscan_based_on_pc1_{rnd}.png")
     plt.close()
-
-    print(f"----->Number of outliers detected: {len(outliers)}")
 
     # PCA contribution analysis
     pc1_contributions = np.abs(pca.components_[0])  # Absolute values of the loadings for PC1
@@ -130,27 +116,27 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
     most_important_weights = np.argsort(pc1_contributions)[::-1][:num_weights_90_percent]
     most_important_weights_int = [int(weight) for weight in most_important_weights]
 
-    # Identify the clean clients (non-outliers)
-    clean_clients = [client_ids[i] for i in range(len(client_ids)) if client_ids[i] not in outliers]
+    # # Identify the clean clients (non-outliers)
+    # clean_clients = [client_ids[i] for i in range(len(client_ids)) if client_ids[i] not in outliers]
 
-    # Find the weights with the highest difference between clean and malicious clients
-    if len(label_counts) > 1:
-        malicious_weights = np.mean([client_weights[i] for i in outlier_indices], axis=0)
-        clean_weights = np.mean([client_weights[i] for i in range(len(client_ids)) if i not in outlier_indices], axis=0)
+    # # Find the weights with the highest difference between clean and malicious clients
+    # if len(label_counts) > 1:
+    #     malicious_weights = np.mean([client_weights[i] for i in outlier_indices], axis=0)
+    #     clean_weights = np.mean([client_weights[i] for i in range(len(client_ids)) if i not in outlier_indices], axis=0)
 
-        weight_differences = clean_weights - malicious_weights
+    #     weight_differences = clean_weights - malicious_weights
 
-        # Find the index of the largest positive difference
-        largest_positive_diff_index = np.argmax(weight_differences)
-        largest_positive_diff_value = weight_differences[largest_positive_diff_index]
+    #     # Find the index of the largest positive difference
+    #     largest_positive_diff_index = np.argmax(weight_differences)
+    #     largest_positive_diff_value = weight_differences[largest_positive_diff_index]
 
-        # Find the index of the largest negative difference
-        largest_negative_diff_index = np.argmin(weight_differences)
-        largest_negative_diff_value = weight_differences[largest_negative_diff_index]
+    #     # Find the index of the largest negative difference
+    #     largest_negative_diff_index = np.argmin(weight_differences)
+    #     largest_negative_diff_value = weight_differences[largest_negative_diff_index]
 
-        # Output the results
-        print(f"Largest positive difference at index {largest_positive_diff_index}: {largest_positive_diff_value}")
-        print(f"Largest negative difference at index {largest_negative_diff_index}: {largest_negative_diff_value}")
+    #     # Output the results
+    #     print(f"Largest positive difference at index {largest_positive_diff_index}: {largest_positive_diff_value}")
+    #     print(f"Largest negative difference at index {largest_negative_diff_index}: {largest_negative_diff_value}")
 
 
     # print(f"Largest difference in weights between clean and malicious clients at index {largest_diff_index}: {largest_diff_value}")
@@ -160,40 +146,16 @@ def apply_pca_to_weights(client_weights, client_ids,rnd):
 
 
 
+
+
+
+
 class CustomFedAvg(fl.server.strategy.FedAvg):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.malicious_clients = []
         self.client_flags = {}
-        # self.model = TestModel()
-
-
-
-
-    # def aggregate_fit(self, rnd, results, failures):
-    #     aggregated_weights = super().aggregate_fit(rnd, results, failures)
-        
-    #     # Extract and flatten weights of each client after training round
-    #     print("Extracting and flattening client weights...")
-    #     client_models = [result.parameters for cid, result in results]  # Get client models
-    #     client_ids = [cid for cid, result in results]  # Get client IDs
-    #     client_weights = extract_client_weights(client_models)
-    #     print("Client weights extracted and flattened.")
-        
-    #     # Apply PCA to the extracted weights and pass client IDs
-    #     self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids,rnd)
-    #     print("Done PCA.....")
-    #     self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
-        
-    #     if self.malicious_clients:
-    #         print(f"Malicious clients detected in round {rnd}: {self.malicious_clients}")
-    #     else:
-    #         print(f"No malicious clients detected in round {rnd}.")
-
-    #     for client_id in client_ids:
-    #         config = {"malicious": client_id in self.malicious_clients}
-    #     return aggregated_weights, self.malicious_clients, most_important_weights
-    #     # return aggregated_weights
+        self.flagged_malicious_clients = False
 
 
 
@@ -206,18 +168,19 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
         print("Client weights extracted and flattened.")
 
         # Apply PCA to the extracted weights and pass client IDs
-        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids,rnd)
+        self.malicious_clients, most_important_weights = apply_pca_to_weights(client_weights, client_ids,rnd,self.flagged_malicious_clients)
         print("Done PCA.....")
         self.client_flags = {client_id: client_id in self.malicious_clients for client_id in client_ids}
 
         # Print malicious clients
         if self.malicious_clients:
             print(f"Malicious clients detected in round {rnd}: {self.malicious_clients}")
+            self.flagged_malicious_clients = True
         else:
             print(f"No malicious clients detected in round {rnd}.")
 
         # Adjust weights of malicious clients by reducing them by 0.5
-        malicious_client_weight_reduction = args.mal_clnt_weight
+       
         adjusted_results = []
         for idx, (client_id, result) in enumerate(results):
             if client_id in self.malicious_clients:
@@ -229,7 +192,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
                                 # Ensure weights are float32
                         numeric_w = np.array(w, dtype=np.float32)  
                                 # Scale the weight and add to adjusted weights
-                        adjusted_weights.append(numeric_w * malicious_client_weight_reduction)  
+                        adjusted_weights.append(numeric_w * 0.5)  
                     except Exception as e:
                         print(f"Warning: Could not scale weights for client {client_id} due to incompatible type: {e}")
                         adjusted_weights.append(w)  # Retain original weight if conversion fails
@@ -253,20 +216,14 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
 
 
 
+ 
 
-    def send_notification(self, client_id, config, aggregated_weights):
-        # This function will add a notification flag to the client
-        client_proxy = fl.server.SimpleClientManager.clients[client_id]
-        # Send the `config` with the flag indicating malicious client status
-        client_proxy.fit(parameters=aggregated_weights, config=config)
+
 
     
 
 # Use the custom strategy
 strategy = CustomFedAvg(evaluate_metrics_aggregation_fn=weighted_average)
-
-
-    
 
 # Start Flower server
 start_time = time.time()
@@ -277,6 +234,7 @@ fl.server.start_server(
     config=fl.server.ServerConfig(num_rounds=args.number_of_round),
     strategy=strategy,
 )
+
 # Calculate and print elapsed time
 end_time = time.time()
 elapsed_time = end_time - start_time
