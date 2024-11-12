@@ -140,7 +140,7 @@ import numpy as np
 import torch
 
 
-def add_trigger(image, trigger_size=15, trigger_value=255):
+def add_trigger(image, trigger_size=7, trigger_value=255):
     # Clone the image to avoid modifying the original one
     triggered_image = image.clone()
     
@@ -326,7 +326,7 @@ class FlowerClient(fl.client.NumPyClient):
         # Save the labels whose local FPR difference is the max compared to global FPR
         if(weighted_label_detection == False):
             max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
-        # max_roc_auc_diff_label = np.argmax(np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label))
+            max_roc_auc_diff_label = np.argmax(np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label))
         else:
             fpr_diff = np.array(local_fpr) - np.array(global_fpr)
             roc_auc_diff = np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label)
@@ -337,7 +337,8 @@ class FlowerClient(fl.client.NumPyClient):
             weighted_diff = 0.5 * fpr_diff + 0.5 * roc_auc_diff
 
             max_fpr_diff_label = np.argmax(weighted_diff)
-        self.trigger_label = max_fpr_diff_label 
+        # self.trigger_label = max_fpr_diff_label 
+        self.trigger_label = max_roc_auc_diff_label
 
         # Print global vs local ROC AUC per label
         for label in range(10):
@@ -479,12 +480,12 @@ class FlowerClient(fl.client.NumPyClient):
         self.global_parameters = [ p.copy() for p in parameters]
 
 
-        print(f"-------------------------------->{withDefense}")
+        print(f"-------------------------------->withdef  {withDefense}")
 
         if (config.get("isMal", True) or self.hasBeenFlagged) and withDefense:
             print('this is a malicious dataset client')
-            print(f"-------------------------------->{withDefense}")
-            if config.get("isMal",True) and self.local_parameters is not None and self.global_parameters is not None:
+            print(f"-------------------------------->withdef  {withDefense}")
+            if self.hasBeenFlagged is False and self.local_parameters is not None and self.global_parameters is not None:
                 self.evaluate_globalvslocal(config.get("rnd"))
                 self.print_config_data(config)
                 if self.trigger_label is not None and self.trigger_label != args.trigger_label:
@@ -597,14 +598,14 @@ class FlowerClient(fl.client.NumPyClient):
                 global_predicted_labels = torch.cat(global_predicted_labels_list, dim=0)
 
             # Add samples based on confidence score comparison
-            confidence_threshold = 0.8  # Define a threshold for low confidence
+            confidence_threshold = 0.4  # Define a threshold for low confidence
 
             n_excluded_through_cnf = 0
             for idx in range(len(targeted_images)):
                 if local_predicted_labels[idx] != global_predicted_labels[idx]:
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf += 1
-                elif torch.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.5:
+                elif torch.abs(global_max_confidences[idx] - local_max_confidences[idx]) > confidence_threshold:
                     indices_to_exclude.add(original_indices[idx])
                     n_excluded_through_cnf += 1
 
@@ -615,8 +616,18 @@ class FlowerClient(fl.client.NumPyClient):
             triggered_found_indices = indices_to_exclude & actual_triggered_indices
             num_actual_triggered_found = len(triggered_found_indices)
 
-            print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
-            print(f"Smallest Cluster Size: {len(smallest_cluster_indices)}")
+            print(f"Number of actual triggered samples found in the total: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
+            print(f"accuracy of trigger sample detection: {num_actual_triggered_found / len(actual_triggered_indices)}")
+            # print(f"Smallest Cluster Size: {len(smallest_cluster_indices)}")
+
+            with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+                sys.stdout = f
+                print(f"Round {config.get('rnd')}")
+                print(f"Number of actual triggered samples found in the total: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
+                print(f"accuracy of trigger sample detection: {num_actual_triggered_found / len(actual_triggered_indices)}")
+                sys.stdout = sys.__stdout__
+            
+            
 
             # Plot the PCA results with clustering
             plt.figure(figsize=(8, 6))
@@ -682,6 +693,14 @@ class FlowerClient(fl.client.NumPyClient):
         # Access custom metrics
         metrics = super().evaluate(parameters, config)
         triggered_accuracy, clean_accuracy = evaluate_trigger(testloader, triggered_indices_test)
+
+        with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+            sys.stdout = f
+            print(f"Round {config.get('rnd')}")
+            print(f"Accuracy on triggered images: {triggered_accuracy * 100:.2f}%")
+            print(f"Accuracy on clean images: {clean_accuracy * 100:.2f}%")
+            sys.stdout = sys.__stdout__
+
         print(f'Accuracy on triggered images: {triggered_accuracy * 100:.2f}%')
         print(f'Accuracy on clean images: {clean_accuracy * 100:.2f}%')
 

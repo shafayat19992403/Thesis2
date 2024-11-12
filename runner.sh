@@ -39,6 +39,8 @@ SERVER_FILE="fl_server_checked.py"
 CLIENT_FILE="fl_client_checked.py"
 
 DEFSTAT="1"
+
+TRUST_FACTOR="0.6"
 # DEFSTAT="0"
 # Echo all the variables
 echo "Number of clients: $NUM_CLIENTS"
@@ -53,10 +55,11 @@ echo "Trigger label 4: $TRIGGER_LABEL_4"
 echo "Server file: $SERVER_FILE"
 echo "Client file: $CLIENT_FILE"
 echo "Defense status: $DEFSTAT"
+echo "Trust factor: $TRUST_FACTOR"
 
 
 # Start the server in a new terminal
-gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE --number_of_round $NUM_OF_ROUNDS  --withDefense $DEFSTAT; exec bash"
+gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE --number_of_round $NUM_OF_ROUNDS  --withDefense $DEFSTAT --trust_factor $TRUST_FACTOR; mpg123 endsong.mp3; exec bash"
 
 # Start each client in a new terminal
 for ((i=1; i<=NUM_CLIENTS; i++)); do
