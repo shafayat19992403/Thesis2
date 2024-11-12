@@ -140,7 +140,7 @@ import numpy as np
 import torch
 
 
-def add_trigger(image, trigger_size=7, trigger_value=255):
+def add_trigger(image, trigger_size=4, trigger_value=255):
     # Clone the image to avoid modifying the original one
     triggered_image = image.clone()
     
@@ -304,13 +304,21 @@ class FlowerClient(fl.client.NumPyClient):
         # Calculate False Positive Rate (FPR) for each label
         global_fpr = []
         local_fpr = []
+        global_fnr = []
+        local_fnr = []
         for label in range(10):  # Assuming 10 classes for MNIST/FashionMNIST
             global_fp = ((global_predictions == label) & (global_labels != label)).sum()
+            global_fn = ((global_predictions != label) & (global_labels == label)).sum()
             global_tn = ((global_predictions != label) & (global_labels != label)).sum()
+            global_tp = ((global_predictions == label) & (global_labels == label)).sum()
+            global_fnr.append(global_fn / (global_fn + global_tp) if (global_fn + global_tp) > 0 else 0)
             global_fpr.append(global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0)
 
             local_fp = ((local_predictions == label) & (local_labels != label)).sum()
             local_tn = ((local_predictions != label) & (local_labels != label)).sum()
+            local_fn = ((local_predictions != label) & (local_labels == label)).sum()
+            local_tp = ((local_predictions == label) & (local_labels == label)).sum()
+            local_fnr.append(local_fn / (local_fn + local_tp) if (local_fn + local_tp) > 0 else 0)
             local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
 
         # Calculate ROC AUC score per class (one-vs-rest)
@@ -322,23 +330,40 @@ class FlowerClient(fl.client.NumPyClient):
             global_roc_auc_per_label.append(global_roc_auc_label)
             local_roc_auc_per_label.append(local_roc_auc_label)
 
-        weighted_label_detection = False
+        weighted_label_detection = True
         # Save the labels whose local FPR difference is the max compared to global FPR
         if(weighted_label_detection == False):
             max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+            max_fnr_diff_label = np.argmax(np.array(local_fnr) - np.array(global_fnr))
             max_roc_auc_diff_label = np.argmax(np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label))
         else:
             fpr_diff = np.array(local_fpr) - np.array(global_fpr)
             roc_auc_diff = np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label)
+            fnr_diff = np.array(global_fnr) - np.array(local_fnr)
             #scale the difference to 0-1
             fpr_diff = (fpr_diff - np.min(fpr_diff)) / (np.max(fpr_diff) - np.min(fpr_diff))
             roc_auc_diff = (roc_auc_diff - np.min(roc_auc_diff)) / (np.max(roc_auc_diff) - np.min(roc_auc_diff))
+            fnr_diff = (fnr_diff - np.min(fnr_diff)) / (np.max(fnr_diff) - np.min(fnr_diff))
 
-            weighted_diff = 0.5 * fpr_diff + 0.5 * roc_auc_diff
+            # Write the order of labels in 3 different arrays in descending order
+            fpr_diff_sorted_indices = np.argsort(fpr_diff)[::-1]
+            roc_auc_diff_sorted_indices = np.argsort(roc_auc_diff)[::-1]
+            fnr_diff_sorted_indices = np.argsort(fnr_diff)[::-1]
+            with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+                sys.stdout = f
+                print("FPR diff sorted labels:", fpr_diff_sorted_indices)
+                print("FPR diff values:", fpr_diff[fpr_diff_sorted_indices])
+                print("ROC AUC diff sorted labels:", roc_auc_diff_sorted_indices)
+                print("ROC AUC diff values:", roc_auc_diff[roc_auc_diff_sorted_indices])
+                print("FNR diff sorted labels:", fnr_diff_sorted_indices)
+                print("FNR diff values:", fnr_diff[fnr_diff_sorted_indices])
+                sys.stdout = sys.__stdout__
+            
+            weighted_diff = 0.3 * fpr_diff + 0.3 * roc_auc_diff + 0.4 * fnr_diff
 
             max_fpr_diff_label = np.argmax(weighted_diff)
-        # self.trigger_label = max_fpr_diff_label 
-        self.trigger_label = max_roc_auc_diff_label
+        self.trigger_label = max_fpr_diff_label 
+        # self.trigger_label = max_roc_auc_diff_label
 
         # Print global vs local ROC AUC per label
         for label in range(10):
@@ -350,7 +375,7 @@ class FlowerClient(fl.client.NumPyClient):
         plt.figure(figsize=(12, 6))
 
         # FPR plot
-        plt.subplot(1, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.plot(labels, global_fpr, label='Global FPR', marker='o', color='blue')
         plt.plot(labels, local_fpr, label='Local FPR', marker='o', color='green')
 
@@ -365,7 +390,7 @@ class FlowerClient(fl.client.NumPyClient):
         plt.legend()
 
         # ROC AUC plot
-        plt.subplot(1, 2, 2)
+        plt.subplot(1, 3, 2)
         plt.plot(labels, global_roc_auc_per_label, label='Global ROC AUC', marker='o', color='blue')
         plt.plot(labels, local_roc_auc_per_label, label='Local ROC AUC', marker='o', color='green')
 
@@ -379,10 +404,28 @@ class FlowerClient(fl.client.NumPyClient):
         plt.title('ROC AUC Comparison (Global vs Local)')
         plt.legend()
 
+
+        # FNR plot
+        plt.subplot(1, 3, 3)
+        plt.plot(labels, global_fnr, label='Global FNR', marker='o', color='blue')
+        plt.plot(labels, local_fnr, label='Local FNR', marker='o', color='green')
+
+        # Highlight points where local FNR is greater than global FNR
+        for i, label in enumerate(labels):
+            if local_fnr[i] < global_fnr[i]:
+                plt.scatter(label, local_fnr[i], color='red', zorder=5, s=100, edgecolor='black', label="Local > Global" if i == 0 else "")
+
+        plt.xlabel('Labels')
+        plt.ylabel('False Negative Rate')
+        plt.title('FNR Comparison (Global vs Local)')
+        plt.legend()
+
+
         plt.tight_layout()
         # plt.show()
         plt.savefig(f"Figures/ClientFPR/C{args.cid}_global_vs_local_fpr_roc_auc_{rnd}.png")
         plt.close()
+        
 
   
 
@@ -598,7 +641,7 @@ class FlowerClient(fl.client.NumPyClient):
                 global_predicted_labels = torch.cat(global_predicted_labels_list, dim=0)
 
             # Add samples based on confidence score comparison
-            confidence_threshold = 0.4  # Define a threshold for low confidence
+            confidence_threshold = 0.1  # Define a threshold for low confidence
 
             n_excluded_through_cnf = 0
             for idx in range(len(targeted_images)):
