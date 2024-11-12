@@ -32,6 +32,8 @@ from sklearn.cluster import DBSCAN
 from sklearn.cluster import KMeans
 from scipy.fftpack import dct
 import torch.optim as optim
+from sklearn.metrics import roc_auc_score
+import sys
 
 
 # #############################################################################
@@ -47,9 +49,14 @@ parser.add_argument("--poison_rate", type=float, default=0.2, help="Rate of pois
 parser.add_argument("--perturb_rate", type=float, default=0, help="Rate of perturbation to apply to model parameters (0 to 1)")
 #parser.add_argument("--isMal", type=bool, default=False, help="Is the client malicious")
 parser.add_argument("--trigger_frac", type=float, default=0.2, help="Fraction of data to be poisoned")
+parser.add_argument("--trigger_label", type=int, default=5, help="Label to be used for the trigger")
+parser.add_argument("--cid", type=int, default=0, help="Client ID")
+parser.add_argument("--withDefense", type=int, default=1, help="Apply defense mechanism")
 
 
 args = parser.parse_args()
+withDefense = args.withDefense == 1
+
 
 # #############################################################################
 # 1. Regular PyTorch pipeline: nn.Module, train, test, and DataLoader
@@ -205,7 +212,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
 
 net = Net().to(DEVICE)
 local_net = Net().to(DEVICE)
-trainloader, testloader, triggered_indices_test, triggered_indices, clean_dataset  = load_data_with_trigger(args.data_path, args.trigger_frac, 7)
+trainloader, testloader, triggered_indices_test, triggered_indices, clean_dataset  = load_data_with_trigger(args.data_path, args.trigger_frac, args.trigger_label)
 
 # Assume net, DEVICE, and other necessary imports are already defined
 
@@ -253,6 +260,9 @@ class FlowerClient(fl.client.NumPyClient):
         self.client_flags = {}
         self.parameters_list = []
         self.hasBeenFlagged = False
+        self.global_parameters = None
+        self.local_parameters = None
+        self.trigger_label = None
 
         
 
@@ -264,28 +274,229 @@ class FlowerClient(fl.client.NumPyClient):
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         net.load_state_dict(state_dict, strict=True)
 
+    def get_predictions_and_labels(self, dataloader):
+        all_predictions = []
+        all_labels = []
+        with torch.no_grad():
+            for images, labels in dataloader:
+                images, labels = images.to(DEVICE), labels.to(DEVICE)
+                outputs = net(images)
+                _, predicted = torch.max(outputs.data, 1)
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+        return np.array(all_predictions), np.array(all_labels)
+
+    def evaluate_globalvslocal(self, rnd):
+    # Ensure global and local parameters are set
+        if self.global_parameters is None or self.local_parameters is None:
+            raise ValueError("Global and local parameters must be set before evaluation.")
+
+        # Set global parameters and evaluate
+        self.set_parameters(self.global_parameters)
+        global_loss, global_accuracy = test(net, testloader)
+        global_predictions, global_labels = self.get_predictions_and_labels(testloader)
+
+        # Set local parameters and evaluate
+        self.set_parameters(self.local_parameters)
+        local_loss, local_accuracy = test(net, testloader)
+        local_predictions, local_labels = self.get_predictions_and_labels(testloader)
+
+        # Calculate False Positive Rate (FPR) for each label
+        global_fpr = []
+        local_fpr = []
+        for label in range(10):  # Assuming 10 classes for MNIST/FashionMNIST
+            global_fp = ((global_predictions == label) & (global_labels != label)).sum()
+            global_tn = ((global_predictions != label) & (global_labels != label)).sum()
+            global_fpr.append(global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0)
+
+            local_fp = ((local_predictions == label) & (local_labels != label)).sum()
+            local_tn = ((local_predictions != label) & (local_labels != label)).sum()
+            local_fpr.append(local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0)
+
+        # Calculate ROC AUC score per class (one-vs-rest)
+        global_roc_auc_per_label = []
+        local_roc_auc_per_label = []
+        for label in range(10):
+            global_roc_auc_label = roc_auc_score((global_labels == label).astype(int), (global_predictions == label).astype(int))
+            local_roc_auc_label = roc_auc_score((local_labels == label).astype(int), (local_predictions == label).astype(int))
+            global_roc_auc_per_label.append(global_roc_auc_label)
+            local_roc_auc_per_label.append(local_roc_auc_label)
+
+        weighted_label_detection = False
+        # Save the labels whose local FPR difference is the max compared to global FPR
+        if(weighted_label_detection == False):
+            max_fpr_diff_label = np.argmax(np.array(local_fpr) - np.array(global_fpr))
+        # max_roc_auc_diff_label = np.argmax(np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label))
+        else:
+            fpr_diff = np.array(local_fpr) - np.array(global_fpr)
+            roc_auc_diff = np.array(local_roc_auc_per_label) - np.array(global_roc_auc_per_label)
+            #scale the difference to 0-1
+            fpr_diff = (fpr_diff - np.min(fpr_diff)) / (np.max(fpr_diff) - np.min(fpr_diff))
+            roc_auc_diff = (roc_auc_diff - np.min(roc_auc_diff)) / (np.max(roc_auc_diff) - np.min(roc_auc_diff))
+
+            weighted_diff = 0.5 * fpr_diff + 0.5 * roc_auc_diff
+
+            max_fpr_diff_label = np.argmax(weighted_diff)
+        self.trigger_label = max_fpr_diff_label 
+
+        # Print global vs local ROC AUC per label
+        for label in range(10):
+            print(f"Label {label} ---> Global ROC AUC: {global_roc_auc_per_label[label]:.4f}, Local ROC AUC: {local_roc_auc_per_label[label]:.4f}")
+
+        # Plot False Positive Rate (FPR) for each label
+        labels = list(range(10))  # Assuming 10 classes for MNIST/FashionMNIST
+
+        plt.figure(figsize=(12, 6))
+
+        # FPR plot
+        plt.subplot(1, 2, 1)
+        plt.plot(labels, global_fpr, label='Global FPR', marker='o', color='blue')
+        plt.plot(labels, local_fpr, label='Local FPR', marker='o', color='green')
+
+        # Highlight points where local FPR is greater than global FPR
+        for i, label in enumerate(labels):
+            if local_fpr[i] > global_fpr[i]:
+                plt.scatter(label, local_fpr[i], color='red', zorder=5, s=100, edgecolor='black', label="Local > Global" if i == 0 else "")
+
+        plt.xlabel('Labels')
+        plt.ylabel('False Positive Rate')
+        plt.title('FPR Comparison (Global vs Local)')
+        plt.legend()
+
+        # ROC AUC plot
+        plt.subplot(1, 2, 2)
+        plt.plot(labels, global_roc_auc_per_label, label='Global ROC AUC', marker='o', color='blue')
+        plt.plot(labels, local_roc_auc_per_label, label='Local ROC AUC', marker='o', color='green')
+
+        # Highlight points where local ROC AUC is greater than global ROC AUC
+        for i, label in enumerate(labels):
+            if local_roc_auc_per_label[i] > global_roc_auc_per_label[i]:
+                plt.scatter(label, local_roc_auc_per_label[i], color='red', zorder=5, s=100, edgecolor='black', label="Local > Global" if i == 0 else "")
+
+        plt.xlabel('Labels')
+        plt.ylabel('ROC AUC')
+        plt.title('ROC AUC Comparison (Global vs Local)')
+        plt.legend()
+
+        plt.tight_layout()
+        # plt.show()
+        plt.savefig(f"Figures/ClientFPR/C{args.cid}_global_vs_local_fpr_roc_auc_{rnd}.png")
+        plt.close()
 
   
 
+    def print_config_data(self, config):
+        with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+            # Change the output stream to the file
+            sys.stdout = f
 
+            # Write a line to the file
+            # print("This is a line written to the file")
+
+            if config.get("isMal") == True and self.local_parameters is not None and self.global_parameters is not None and config is not None:
+                print(f"S0---------->Successfully detected trigger client at round {config.get('rnd')}")
+                if(self.trigger_label is not None and self.trigger_label != args.trigger_label):
+                    print(f"E1----------->Failed to detect correct trigger label in round {config.get('rnd')}")
+                else:
+                    print(f"S1----------->Successfully detected trigger label in round {config.get('rnd')}")
+
+            if config.get("isMal") == False and args.trigger_frac > 0:
+                print(f"E2----------->Failed to detect trigger client in round {config.get('rnd')}")
+
+            if config.get("isMal") == False and args.trigger_frac == 0:
+                print(f"S2----------->Successfully detected non-trigger client in round {config.get('rnd')}")
+            
+            if config.get("isMal") == True and args.trigger_frac == 0:
+                print(f"E3----------->Flagged a non-trigger client in round {config.get('rnd')}")
+
+            
+            print("-------------->config:")
+            print(config.get("isMal"))
+            print(config.keys().__len__())
+            # Change the output stream back to default
+
+            sys.stdout = sys.__stdout__
+
+    def globalvslocal_fpr_fnr_roc_auc(self, rnd):
+        # Ensure global and local parameters are set
+        if self.global_parameters is None or self.local_parameters is None:
+            raise ValueError("Global and local parameters must be set before evaluation.")
+
+        # Set global parameters and evaluate
+        self.set_parameters(self.global_parameters)
+        global_predictions, global_labels = self.get_predictions_and_labels(testloader)
+
+        # Set local parameters and evaluate
+        self.set_parameters(self.local_parameters)
+        local_predictions, local_labels = self.get_predictions_and_labels(testloader)
+
+        # Calculate FPR, FNR, and ROC AUC for the trigger label
+        trigger_label = self.trigger_label
+
+        global_fp = ((global_predictions == trigger_label) & (global_labels != trigger_label)).sum()
+        global_fn = ((global_predictions != trigger_label) & (global_labels == trigger_label)).sum()
+        global_tn = ((global_predictions != trigger_label) & (global_labels != trigger_label)).sum()
+        global_tp = ((global_predictions == trigger_label) & (global_labels == trigger_label)).sum()
+
+        local_fp = ((local_predictions == trigger_label) & (local_labels != trigger_label)).sum()
+        local_fn = ((local_predictions != trigger_label) & (local_labels == trigger_label)).sum()
+        local_tn = ((local_predictions != trigger_label) & (local_labels != trigger_label)).sum()
+        local_tp = ((local_predictions == trigger_label) & (local_labels == trigger_label)).sum()
+
+        global_fpr = global_fp / (global_fp + global_tn) if (global_fp + global_tn) > 0 else 0
+        global_fnr = global_fn / (global_fn + global_tp) if (global_fn + global_tp) > 0 else 0
+        global_roc_auc = roc_auc_score((global_labels == trigger_label).astype(int), (global_predictions == trigger_label).astype(int))
+
+        local_fpr = local_fp / (local_fp + local_tn) if (local_fp + local_tn) > 0 else 0
+        local_fnr = local_fn / (local_fn + local_tp) if (local_fn + local_tp) > 0 else 0
+        local_roc_auc = roc_auc_score((local_labels == trigger_label).astype(int), (local_predictions == trigger_label).astype(int))
+
+        # Print the results
+        with open(f'Figures/ConfigTexts/C{args.cid}_logs.txt', 'a') as f:
+            sys.stdout = f
+            print(f"Log at round {rnd}")
+            if(self.hasBeenFlagged):
+                print("with detection")
+            else:
+                print("without detection")
+            print(f"Trigger Label: {trigger_label}")
+            print(f"Global FPR: {global_fpr:.4f}, Global FNR: {global_fnr:.4f}, Global ROC AUC: {global_roc_auc:.4f}")
+            print(f"Local FPR: {local_fpr:.4f}, Local FNR: {local_fnr:.4f}, Local ROC AUC: {local_roc_auc:.4f}")
+            sys.stdout = sys.__stdout__
 
     def fit(self, parameters, config):
         # global local_net
         # self.set_parameters(parameters)
-        print(net.layers)
+        # print(net.layers)
         
 
         self.parameters_list.clear()
 
         print(config.get("isMal"))
-        print(config.keys().__len__())
+        # print(config.keys().__len__())
+        
 
-        # config['isMal'] = False
+        self.global_parameters = [ p.copy() for p in parameters]
 
-        if config.get("isMal", True) or self.hasBeenFlagged:
-            self.hasBeenFlagged = True
+
+        print(f"-------------------------------->{withDefense}")
+
+        if (config.get("isMal", True) or self.hasBeenFlagged) and withDefense:
             print('this is a malicious dataset client')
-            targeted_label = 7  # Example: if label 7 is being targeted
+            print(f"-------------------------------->{withDefense}")
+            if config.get("isMal",True) and self.local_parameters is not None and self.global_parameters is not None:
+                self.evaluate_globalvslocal(config.get("rnd"))
+                self.print_config_data(config)
+                if self.trigger_label is not None and self.trigger_label != args.trigger_label:
+                    print(f"Failed to detect correct trigger label in round {config.get('rnd')}")
+                else:
+                    print(f"Successfully detected trigger label in round {config.get('rnd')}")
+
+
+            self.hasBeenFlagged = True
+
+            self.globalvslocal_fpr_fnr_roc_auc(config.get("rnd"))
+            targeted_label = self.trigger_label  # Example: if label 7 is being targeted
 
             # Extract images, labels, and their original indices from trainloader with the targeted label
             targeted_images = []
@@ -301,114 +512,6 @@ class FlowerClient(fl.client.NumPyClient):
                     if mask[i]:
                         original_indices.append(batch_idx * batch_size + i)
 
-            # # Combine all batches into a single tensor
-            # targeted_images = torch.cat(targeted_images, dim=0)
-            # targeted_images = targeted_images.to(DEVICE)
-
-            # features_list = []
-
-            # def hook_fn(module, input, output):
-            #     features_list.append(input[0].detach())
-
-            # # Register the hook to capture the input to fc2
-            # handle = local_net.fc2.register_forward_hook(hook_fn)
-
-            # # Pass the targeted images through the model
-            # local_net.eval()
-            # with torch.no_grad():
-            #     # local_net = local_net.to(DEVICE)
-            #     _ = local_net(targeted_images)
-
-            # handle.remove()
-
-            # # Convert the list of feature outputs to a tensor
-            # features = torch.cat(features_list, dim=0)
-
-            # flattened_features = features.view(features.size(0), -1).cpu().numpy()
-
-            # # Apply PCA to reduce to 2 components
-            # pca = PCA(n_components=2)
-            # pca_result = pca.fit_transform(flattened_features)
-            # pc1_values = pca_result[:, 0].reshape(-1, 1)
-
-            # # Apply K-means clustering
-            # kmeans = KMeans(n_clusters=2, random_state=42)
-            # cluster_labels = kmeans.fit_predict(pc1_values)
-
-            # # Identify the sizes of the clusters
-            # unique, counts = np.unique(cluster_labels, return_counts=True)
-            # cluster_sizes = dict(zip(unique, counts))
-
-            # # Find the smallest cluster
-            # smallest_cluster_label = min(cluster_sizes, key=cluster_sizes.get)
-
-            # # Get indices of samples in the smallest cluster
-            # smallest_cluster_indices = np.where(cluster_labels == smallest_cluster_label)[0]
-
-            # # Convert the smallest cluster indices to their original dataset indices
-            # # smallest_cluster_dataset_indices = [original_indices[i] for i in smallest_cluster_indices]
-            # # indices_to_exclude = set(smallest_cluster_dataset_indices)
-
-
-            # local_net.eval()
-            # net.eval()
-
-            # with torch.no_grad():
-            #     # Get predictions from local_net
-            #     local_outputs = local_net(targeted_images)
-            #     local_confidences = F.softmax(local_outputs, dim=1)  # Apply softmax to get probabilities
-            #     local_max_confidences, local_predicted_labels = torch.max(local_confidences, dim=1)
-
-            #     # Get predictions from net
-            #     global_outputs = net(targeted_images)
-            #     global_confidences = F.softmax(global_outputs, dim=1)
-            #     global_max_confidences, global_predicted_labels = torch.max(global_confidences, dim=1)
-
-            # # Initialize indices_to_exclude with smallest cluster indices
-            # smallest_cluster_dataset_indices = [original_indices[i] for i in smallest_cluster_indices]
-            # indices_to_exclude = set(smallest_cluster_dataset_indices)
-
-            # # Add samples based on confidence score comparison
-            # confidence_threshold = 0.8  # Define a threshold for low confidence
-
-            # n_excluded_through_cnf = 0
-            # for idx in range(len(targeted_images)):
-            #     # if local_max_confidences[idx] < confidence_threshold and local_predicted_labels[idx] != global_predicted_labels[idx]:
-            #     #     indices_to_exclude.add(original_indices[idx])
-            #     #     n_excluded_through_cnf+=1
-            #     if local_predicted_labels[idx] != global_predicted_labels[idx]:
-            #         indices_to_exclude.add(original_indices[idx])
-            #         n_excluded_through_cnf+=1
-            #     elif torch.abs(global_max_confidences[idx] - local_max_confidences[idx]) > 0.5 :
-            #         indices_to_exclude.add(original_indices[idx])
-            #         n_excluded_through_cnf+=1
-            
-            # print(f"exlcuded by cnf: {n_excluded_through_cnf}")
-
-            # # Check how many of the smallest cluster indices are in triggered_indices
-            # # Assuming triggered_indices are defined and correspond to actual triggered samples
-            # actual_triggered_indices = set(triggered_indices)  # Replace this with your actual triggered indices
-            # #triggered_found_indices = set(smallest_cluster_dataset_indices) & actual_triggered_indices
-            # triggered_found_indices = indices_to_exclude & actual_triggered_indices
-            # num_actual_triggered_found = len(triggered_found_indices)
-
-            # print(f"Number of actual triggered samples found in the smallest cluster: {num_actual_triggered_found} out of {len(actual_triggered_indices)}")
-            # print(f"Smallest Cluster Size: {len(smallest_cluster_indices)}")
-            
-            # # Plot the PCA results with clustering
-            # plt.figure(figsize=(8, 6))
-            # scatter = plt.scatter(pca_result[:, 0], pca_result[:, 1], c=cluster_labels, cmap='viridis', alpha=0.5)
-            # plt.colorbar(scatter)
-            # plt.title('PCA of CNN Features for Targeted Label with K-means Clustering')
-            # plt.xlabel('Principal Component 1')
-            # plt.ylabel('Principal Component 2')
-            # plt.savefig(f'3_{config.get("rnd")}_clustered.png')
-            # plt.close()
-
-            
-            # del targeted_images
-            # gc.collect()
-            # torch.cuda.empty_cache()
 
             # Define batch size
             batch_size = 32
@@ -522,7 +625,7 @@ class FlowerClient(fl.client.NumPyClient):
             plt.title('PCA of CNN Features for Targeted Label with K-means Clustering')
             plt.xlabel('Principal Component 1')
             plt.ylabel('Principal Component 2')
-            plt.savefig(f'3_{config.get("rnd")}_clustered.png')
+            plt.savefig(f'Figures/ClientPCA/{args.cid}_{config.get("rnd")}_clustered.png')
             plt.close()
 
             del targeted_images
@@ -552,6 +655,7 @@ class FlowerClient(fl.client.NumPyClient):
 
         self.set_parameters(parameters)
         train(net, trainloader, epochs=1)
+        self.local_parameters = self.get_parameters(config={})
         if self.hasBeenFlagged == False :
             # parameters = [param.data.detach().cpu().numpy() for param in net.parameters()]
             # params_dict = zip(local_net.state_dict().keys(), parameters)

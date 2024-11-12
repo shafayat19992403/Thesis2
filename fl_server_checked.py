@@ -27,7 +27,11 @@ import flwr as fl
 # Argument parser for number of rounds
 parser = argparse.ArgumentParser(description="Federated Learning with Flower and PyTorch")
 parser.add_argument("--number_of_round", type=int, default=4, help="Number of rounds")
+parser.add_argument("--trust_factor", type=float, default=0.5, help="Trust factor for malicious clients")
+parser.add_argument("--exp_no", type=int, default=1, help="Experiment number")
+parser.add_argument("--withDefense", type=int, default=1, help="Defense mechanism")
 args = parser.parse_args()
+withDefense = args.withDefense == 1
 
 # Define metric aggregation function
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -61,6 +65,7 @@ def apply_pca_to_weights(client_weights, client_ids,rnd,flagged_malicious_client
     pc1_values = pc1_values.reshape(-1, 1)
     
     # Apply DBSCAN clustering based on PC1 values
+    #hyperparameter tuning
     if flagged_malicious_clients:
         eps_value = 1.0
     else:
@@ -100,7 +105,7 @@ def apply_pca_to_weights(client_weights, client_ids,rnd,flagged_malicious_client
     plt.xlabel("Principal Component 1")
     plt.ylabel("Principal Component 2")
     plt.legend()
-    plt.savefig(f"pca_with_dbscan_based_on_pc1_{rnd}.png")
+    plt.savefig(f"Figures/ServerPCA/pca_with_dbscan_based_on_pc1_{rnd}_{args.exp_no}.png")
     plt.close()
 
     # PCA contribution analysis
@@ -159,6 +164,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
 
 
 
+
     def aggregate_fit(self, rnd, results, failures):
         # Extract and flatten weights of each client after training round
         print("Extracting and flattening client weights...")
@@ -180,7 +186,13 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
             print(f"No malicious clients detected in round {rnd}.")
 
         # Adjust weights of malicious clients by reducing them by 0.5
-       
+        # print(f"------------------------->{withDefense}")
+
+        trust_factor = args.trust_factor
+        if withDefense is False:
+            trust_factor = 1.0
+        
+        print(f"Trust factor: {trust_factor}")
         adjusted_results = []
         for idx, (client_id, result) in enumerate(results):
             if client_id in self.malicious_clients:
@@ -192,7 +204,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
                                 # Ensure weights are float32
                         numeric_w = np.array(w, dtype=np.float32)  
                                 # Scale the weight and add to adjusted weights
-                        adjusted_weights.append(numeric_w * 0.5)  
+                        adjusted_weights.append(numeric_w * trust_factor)  
                     except Exception as e:
                         print(f"Warning: Could not scale weights for client {client_id} due to incompatible type: {e}")
                         adjusted_weights.append(w)  # Retain original weight if conversion fails
@@ -204,7 +216,7 @@ class CustomFedAvg(fl.server.strategy.FedAvg):
                             metrics=result.metrics,
                             status=result.status  # Ensure to add the `status` argument
                         )
-                print("adjusted............ ")
+                print(f"adjusted............ for malicious client_{client_id}")
                 adjusted_results.append((client_id, adjusted_result))
             else:
                  adjusted_results.append((client_id, result))
