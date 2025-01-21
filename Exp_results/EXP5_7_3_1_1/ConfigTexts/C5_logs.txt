@@ -1,0 +1,24 @@
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 41.72%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 49.73%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 55.06%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 57.85%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 59.44%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 60.18%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 61.32%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 61.32%

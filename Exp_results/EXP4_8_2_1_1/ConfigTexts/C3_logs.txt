@@ -1,0 +1,41 @@
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 41.55%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 49.74%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 54.05%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 57.20%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 59.29%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 60.86%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 62.01%
+FPR diff sorted labels: [5 9 3 0 4 1 6 7 2 8]
+FPR diff values: [1.         0.50212766 0.49361702 0.41702128 0.35744681 0.33617021
+ 0.32765957 0.22553191 0.14042553 0.        ]
+ROC AUC diff sorted labels: [5 9 3 0 6 1 7 4 8 2]
+ROC AUC diff values: [1.         0.57213115 0.4704918  0.4557377  0.36967213 0.21311475
+ 0.19754098 0.11311475 0.10819672 0.        ]
+FNR diff sorted labels: [5 9 3 0 6 1 7 4 8 2]
+FNR diff values: [1.         0.55063291 0.46202532 0.43670886 0.34810127 0.21518987
+ 0.1835443  0.13291139 0.06962025 0.        ]
+S0---------->Successfully detected trigger client at round 8
+S1----------->Successfully detected trigger label in round 8
+E3----------->Flagged a non-trigger client in round 8
+-------------->config:
+True
+19396
+Log at round 8
+with detection
+Trigger Label: 5
+Global FPR: 0.0381, Global FNR: 0.5260, Global ROC AUC: 0.7179
+Local FPR: 0.0610, Local FNR: 0.4500, Local ROC AUC: 0.7445

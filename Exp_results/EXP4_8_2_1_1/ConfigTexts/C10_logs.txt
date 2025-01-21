@@ -1,0 +1,86 @@
+Round None
+Accuracy on triggered images: 5.70%
+Accuracy on clean images: 41.53%
+Round None
+Accuracy on triggered images: 9.70%
+Accuracy on clean images: 50.31%
+FPR diff sorted labels: [4 1 7 0 9 6 3 5 8 2]
+FPR diff values: [1.         0.56377499 0.55218846 0.47745756 0.44681227 0.29356937
+ 0.23435379 0.18481491 0.05263595 0.        ]
+ROC AUC diff sorted labels: [4 0 1 7 6 3 9 5 8 2]
+ROC AUC diff values: [1.         0.23367655 0.17507548 0.16574691 0.15540446 0.11958392
+ 0.02916079 0.01659748 0.00554378 0.        ]
+FNR diff sorted labels: [4 0 1 7 6 3 9 5 8 2]
+FNR diff values: [1.         0.25870424 0.21498117 0.20542079 0.16958911 0.13136673
+ 0.07203883 0.03386746 0.01037848 0.        ]
+S0---------->Successfully detected trigger client at round 3
+S1----------->Successfully detected trigger label in round 3
+-------------->config:
+True
+11982
+Log at round 3
+with detection
+Trigger Label: 4
+Global FPR: 0.0453, Global FNR: 0.8015, Global ROC AUC: 0.5766
+Local FPR: 0.0722, Local FNR: 0.3328, Local ROC AUC: 0.7975
+Round 3
+Number of actual triggered samples found in the total: 3240 out of 5000
+accuracy of trigger sample detection: 0.648
+Round None
+Accuracy on triggered images: 13.60%
+Accuracy on clean images: 59.28%
+Log at round 4
+with detection
+Trigger Label: 4
+Global FPR: 0.0450, Global FNR: 0.7079, Global ROC AUC: 0.6235
+Local FPR: 0.0689, Local FNR: 0.3004, Local ROC AUC: 0.8153
+Round 4
+Number of actual triggered samples found in the total: 4320 out of 5000
+accuracy of trigger sample detection: 0.864
+Round None
+Accuracy on triggered images: 14.30%
+Accuracy on clean images: 63.36%
+Log at round 5
+with detection
+Trigger Label: 4
+Global FPR: 0.0397, Global FNR: 0.6797, Global ROC AUC: 0.6403
+Local FPR: 0.0689, Local FNR: 0.3004, Local ROC AUC: 0.8153
+Round 5
+Number of actual triggered samples found in the total: 4533 out of 5000
+accuracy of trigger sample detection: 0.9066
+Round None
+Accuracy on triggered images: 12.70%
+Accuracy on clean images: 65.51%
+Log at round 6
+with detection
+Trigger Label: 4
+Global FPR: 0.0343, Global FNR: 0.6839, Global ROC AUC: 0.6409
+Local FPR: 0.0689, Local FNR: 0.3004, Local ROC AUC: 0.8153
+Round 6
+Number of actual triggered samples found in the total: 4664 out of 5000
+accuracy of trigger sample detection: 0.9328
+Round None
+Accuracy on triggered images: 13.10%
+Accuracy on clean images: 67.27%
+Log at round 7
+with detection
+Trigger Label: 4
+Global FPR: 0.0360, Global FNR: 0.6672, Global ROC AUC: 0.6484
+Local FPR: 0.0689, Local FNR: 0.3004, Local ROC AUC: 0.8153
+Round 7
+Number of actual triggered samples found in the total: 4801 out of 5000
+accuracy of trigger sample detection: 0.9602
+Round None
+Accuracy on triggered images: 15.40%
+Accuracy on clean images: 68.46%
+Log at round 8
+with detection
+Trigger Label: 4
+Global FPR: 0.0404, Global FNR: 0.6364, Global ROC AUC: 0.6616
+Local FPR: 0.0689, Local FNR: 0.3004, Local ROC AUC: 0.8153
+Round 8
+Number of actual triggered samples found in the total: 4841 out of 5000
+accuracy of trigger sample detection: 0.9682
+Round None
+Accuracy on triggered images: 17.80%
+Accuracy on clean images: 69.11%

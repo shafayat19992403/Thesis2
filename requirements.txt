@@ -2,3 +2,6 @@ torch
 torchvision
 tqdm
 flwr
+scikit-learn
+matplotlib
+numpy
