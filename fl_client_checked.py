@@ -75,18 +75,17 @@ import numpy as np
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)  # Assuming this is for MNIST
+        self.conv1 = nn.Conv2d(3, 32, 3, 1)  # Adjusted for CIFAR-10 (3 input channels)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
         self.dropout1 = nn.Dropout2d(0.25)
         self.dropout2 = nn.Dropout2d(0.5)
-        # Adjusted to match the actual size
-        self.fc1 = nn.Linear(1600, 128)  # Adjusted from 9216 to 1600
+        self.fc1 = nn.Linear(2304, 128)  # Adjusted for CIFAR-10 (6x6x64 = 2304)
         self.fc2 = nn.Linear(128, 10)
         self.layers = [
-            ('conv1', (32, 1, 3, 3)),   # conv1 weights shape: 32 filters, 1 input channel, 3x3 kernel
+            ('conv1', (32, 3, 3, 3)),   # conv1 weights shape: 32 filters, 3 input channels, 3x3 kernel
             ('conv2', (64, 32, 3, 3)),  # conv2 weights shape: 64 filters, 32 input channels, 3x3 kernel
-            ('fc1', (1600, 128)),        # fc1 weights shape: input size 1600, output size 128
-            ('fc2', (128, 10)),          # fc2 weights shape: input size 128, output size 10 (for classification)
+            ('fc1', (2304, 128)),       # fc1 weights shape: input size 2304, output size 128
+            ('fc2', (128, 10)),         # fc2 weights shape: input size 128, output size 10 (for classification)
         ]
 
         self.biases = [32, 64, 128, 10]
@@ -140,7 +139,7 @@ import numpy as np
 import torch
 
 
-def add_trigger(image, trigger_size=4, trigger_value=255):
+def add_trigger(image, trigger_size=15, trigger_value=255):
     # Clone the image to avoid modifying the original one
     triggered_image = image.clone()
     
@@ -152,16 +151,19 @@ def add_trigger(image, trigger_size=4, trigger_value=255):
 
 def load_data(data_path, poison_rate=0.2):
     trf = Compose([ToTensor(), Normalize((0.1307,), (0.3081,))])  # Normalization for MNIST
-    trainset = FashionMNIST(data_path, train=True, download=True, transform=trf)
-    testset = FashionMNIST(data_path, train=False, download=True, transform=trf)
-
+    # trainset = FashionMNIST(data_path, train=True, download=True, transform=trf)
+    # testset = FashionMNIST(data_path, train=False, download=True, transform=trf)
+    trainset = CIFAR10(data_path, train=True, download=True, transform=trf)
+    testset = CIFAR10(data_path, train=False, download=True, transform=trf)
     return DataLoader(trainset, batch_size=32, shuffle=True), DataLoader(testset)
 
 
 def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
     trf = Compose([ToTensor(), Normalize((0.1307,), (0.3081,))])  # Normalization for MNIST
-    trainset = FashionMNIST(data_path, train=True, download=True, transform=trf)
-    testset = FashionMNIST(data_path, train=False, download=True, transform=trf)
+    # trainset = FashionMNIST(data_path, train=True, download=True, transform=trf)
+    # testset = FashionMNIST(data_path, train=False, download=True, transform=trf)
+    trainset = CIFAR10(data_path, train=True, download=True, transform=trf)
+    testset = CIFAR10(data_path, train=False, download=True, transform=trf)
     triggered_trainset = []
     triggered_testset = []
     clean_dataset = []
@@ -197,7 +199,7 @@ def load_data_with_trigger(data_path, trigger_fraction=0.2, trigger_label=7):
                 label = trigger_label
         triggered_testset.append((image, label))
 
-    return DataLoader(triggered_trainset, batch_size=32, shuffle=False), DataLoader(triggered_testset), triggered_indices_test, triggered_indices, DataLoader(clean_dataset)
+    return DataLoader(triggered_trainset, batch_size=16, shuffle=False), DataLoader(triggered_testset,shuffle=False), triggered_indices_test, triggered_indices, DataLoader(clean_dataset,shuffle=False)
 
 
 
