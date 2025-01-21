@@ -1,0 +1,60 @@
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 41.83%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 49.65%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 54.21%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 57.57%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 59.88%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 60.78%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 61.17%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 62.45%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 62.72%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 63.76%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 63.62%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 63.58%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.34%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.80%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.77%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 65.14%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.76%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.14%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 64.55%
+Round None
+Accuracy on triggered images: 0.00%
+Accuracy on clean images: 65.38%
