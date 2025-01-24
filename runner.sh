@@ -18,29 +18,22 @@ fi
 # Number of clients to run
 NUM_CLIENTS=$1
 NUM_POISONED_CLIENTS=$2
-# TRIGGER_LABEL_1=$3
-# TRIGGER_LABEL_2=$4
-# TRIGGER_LABEL_3=$5
-# TRIGGER_LABEL_4=$6
 TRIGGER_FRAC="0.1"
-NUM_OF_ROUNDS="8"
-SAME_LABEL="0"
+NUM_OF_ROUNDS="20"
+SAME_LABEL="1"
 
 
 TRIGGER_LABEL_1="5"
 TRIGGER_LABEL_2="2"
 TRIGGER_LABEL_3="4"
 TRIGGER_LABEL_4="7"
-# TRIGGER_LABEL=$3
-# SERVER_FILE="fl_server_2.py"
-# CLIENT_FILE="fl_client_2.py"
-SERVER_FILE="fl_server_checked.py"
-# CLIENT_FILE="fl_client_checked_working.py"
-CLIENT_FILE="fl_client_checked.py"
+
+SERVER_FILE="fl_server.py"
+CLIENT_FILE="fl_client.py"
 
 DEFSTAT="1"
 
-TRUST_FACTOR="0.6"
+TRUST_FACTOR="0.3"
 # DEFSTAT="0"
 # Echo all the variables
 echo "Number of clients: $NUM_CLIENTS"
@@ -59,7 +52,7 @@ echo "Trust factor: $TRUST_FACTOR"
 
 
 # Start the server in a new terminal
-gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE --number_of_round $NUM_OF_ROUNDS  --withDefense $DEFSTAT --trust_factor $TRUST_FACTOR; mpg123 endsong.mp3; exec bash"
+gnome-terminal -- bash -c "echo 'Starting server...'; python3 $SERVER_FILE --number_of_round $NUM_OF_ROUNDS  --withDefense $DEFSTAT --trust_factor $TRUST_FACTOR; exec bash"
 
 # Start each client in a new terminal
 for ((i=1; i<=NUM_CLIENTS; i++)); do
@@ -68,7 +61,7 @@ done
 
 for ((i=1; i<=NUM_POISONED_CLIENTS; i++)); do
 
-    if [ $SAME_LABEL -eq 1 ]; then
+    if [ $SAME_LABEL -eq 0 ]; then
         if [ $((i % 4)) -eq 0 ]; then
             TRIGGER_LABEL=$TRIGGER_LABEL_1
         fi
@@ -82,7 +75,7 @@ for ((i=1; i<=NUM_POISONED_CLIENTS; i++)); do
             TRIGGER_LABEL=$TRIGGER_LABEL_4
         fi
     fi
-    if [ $SAME_LABEL -eq 0 ]; then
+    if [ $SAME_LABEL -eq 1 ]; then
         TRIGGER_LABEL=$TRIGGER_LABEL_1
     fi
 
@@ -96,6 +89,4 @@ done
 
 # Optional: Wait for all clients to finish
 wait
-# ./summarizer.sh
-# close all gnome terminals after the run
-# killall gnome-terminal
+
